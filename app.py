@@ -1,89 +1,127 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
+import gspread
+from google.oauth2.service_account import Credentials
 import datetime
-import json
 
 # ==========================================
-# 1. 데이터베이스(DB) 세팅 및 함수
+# 1. 구글 시트 연결 설정 (Secrets 활용)
 # ==========================================
-def init_db():
-    conn = sqlite3.connect('exam_db.sqlite')
-    c = conn.cursor()
-    # 학생 테이블
-    c.execute('''CREATE TABLE IF NOT EXISTS students
-                 (phone TEXT PRIMARY KEY, name TEXT, school TEXT, grade TEXT, last_part INTEGER)''')
-    # 답안 테이블 (학생폰번호, 파트, 문항번호, 답안, 확신도)
-    c.execute('''CREATE TABLE IF NOT EXISTS answers
-                 (phone TEXT, part INTEGER, q_num INTEGER, answer TEXT, confidence TEXT,
-                 PRIMARY KEY (phone, part, q_num))''')
-    conn.commit()
-    conn.close()
+# Streamlit Cloud에 배포할 때는 'Secrets'에 정보를 넣어야 작동합니다.
+def get_db_connection():
+    # 권한 설정
+    scope = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    
+    # Secrets에서 정보 가져오기
+    # 로컬 테스트 시에는 .streamlit/secrets.toml 파일이 필요하고,
+    # 배포 시에는 Streamlit Cloud 대시보드에서 입력합니다.
+    credentials_info = st.secrets["gcp_service_account"]
+    creds = Credentials.from_service_account_info(credentials_info, scopes=scope)
+    client = gspread.authorize(creds)
+    
+    # 스프레드시트 열기 (제목으로 찾기)
+    sh = client.open("english_exam_db")
+    return sh
 
+# ==========================================
+# 2. DB 함수 (구글 시트용으로 변경됨)
+# ==========================================
 def get_student(name, phone):
-    conn = sqlite3.connect('exam_db.sqlite')
-    c = conn.cursor()
-    c.execute("SELECT * FROM students WHERE name=? AND phone=?", (name, phone))
-    data = c.fetchone()
-    conn.close()
-    return data
+    try:
+        sh = get_db_connection()
+        ws = sh.worksheet("students")
+        # 모든 데이터 가져와서 Pandas DF로 변환
+        data = ws.get_all_records()
+        df = pd.DataFrame(data)
+        
+        # 폰번호는 문자열로 처리 (010...)
+        df['phone'] = df['phone'].astype(str)
+        
+        # 검색
+        student = df[(df['name'] == name) & (df['phone'] == phone)]
+        
+        if not student.empty:
+            return student.iloc[0].to_dict()
+        return None
+    except Exception as e:
+        return None
 
 def save_student(name, phone, school, grade):
-    conn = sqlite3.connect('exam_db.sqlite')
-    c = conn.cursor()
-    # 이미 있으면 업데이트, 없으면 생성 (INSERT OR REPLACE)
-    c.execute("INSERT OR REPLACE INTO students (phone, name, school, grade, last_part) VALUES (?, ?, ?, ?, COALESCE((SELECT last_part FROM students WHERE phone=?), 1))", 
-              (phone, name, school, grade, phone))
-    conn.commit()
-    conn.close()
+    sh = get_db_connection()
+    ws = sh.worksheet("students")
+    
+    # 이미 있는지 확인
+    cell = ws.find(phone)
+    
+    if cell:
+        # 이미 있으면 정보 업데이트 (행 번호: cell.row)
+        # 1:phone, 2:name, 3:school, 4:grade, 5:last_part
+        # 기존 last_part 유지 또는 업데이트 로직 필요하나, 여기서는 가입정보만 갱신
+        ws.update_cell(cell.row, 2, name)
+        ws.update_cell(cell.row, 3, school)
+        ws.update_cell(cell.row, 4, grade)
+    else:
+        # 없으면 새로 추가 (기본 last_part = 1)
+        ws.append_row([str(phone), name, school, grade, 1])
+
+def update_last_part(phone, next_part):
+    sh = get_db_connection()
+    ws = sh.worksheet("students")
+    cell = ws.find(str(phone))
+    if cell:
+        # last_part는 5번째 컬럼이라고 가정
+        ws.update_cell(cell.row, 5, next_part)
 
 def save_answers(phone, part, answers_dict, conf_dict):
-    conn = sqlite3.connect('exam_db.sqlite')
-    c = conn.cursor()
+    sh = get_db_connection()
+    ws = sh.worksheet("answers")
+    
+    # 한 번에 여러 행 추가 (속도 향상)
+    rows_to_add = []
     for q_num, ans in answers_dict.items():
         conf = conf_dict.get(q_num, "모름")
-        c.execute("INSERT OR REPLACE INTO answers VALUES (?, ?, ?, ?, ?)", 
-                  (phone, part, q_num, ans, conf))
+        # phone, part, q_num, answer, confidence
+        rows_to_add.append([str(phone), part, q_num, ans, conf])
     
-    # 진행 상황 업데이트 (다음 파트로 넘어감)
-    next_part = part + 1
-    c.execute("UPDATE students SET last_part = ? WHERE phone = ?", (next_part, phone))
-    conn.commit()
-    conn.close()
+    ws.append_rows(rows_to_add)
+    
+    # 학생 상태 업데이트 (다음 파트로)
+    update_last_part(phone, part + 1)
 
 def load_answers(phone):
-    conn = sqlite3.connect('exam_db.sqlite')
-    df = pd.read_sql_query("SELECT * FROM answers WHERE phone = ?", conn, params=(phone,))
-    conn.close()
-    return df
+    sh = get_db_connection()
+    ws = sh.worksheet("answers")
+    data = ws.get_all_records()
+    df = pd.DataFrame(data)
+    df['phone'] = df['phone'].astype(str)
+    
+    # 내 답안만 필터링
+    my_answers = df[df['phone'] == str(phone)]
+    return my_answers
 
 # ==========================================
-# 2. 정답지 및 채점 로직 (가상 데이터)
+# 3. 정답지 및 AI 채점 (가상)
 # ==========================================
-# 실제로는 원장님이 만든 정답표를 여기에 넣습니다.
+# 객관식 정답지 예시 (원장님이 채워넣으셔야 합니다)
 ANSWER_KEY = {
-    1: {1: "2", 2: "1", 3: "3"}, # Part 1 정답 예시
-    2: {1: "5", 2: "2"},         # Part 2 정답 예시
-    # ... Part 3~7 생략 ...
-    8: {} # Part 8은 서술형이므로 AI 채점
+    1: {1: "2", 2: "1", 3: "3"}, 
+    2: {1: "5", 2: "2"},
+    # ... 계속 추가 ...
 }
 
 def ai_grading_mock(question_num, student_answer):
-    """
-    실제로는 여기서 OpenAI/Gemini API를 호출합니다.
-    지금은 테스트를 위해 무조건 정답 처리하거나 특정 키워드 체크만 합니다.
-    """
-    # [AI 채점 시뮬레이션]
-    if len(student_answer) > 5: # 5글자 이상 쓰면 정답으로 간주 (테스트용)
-        return True, "논리적 흐름이 우수함"
-    else:
-        return False, "조건 충족 미흡"
+    # 실제 AI 연동 전 테스트용
+    if len(student_answer) > 5:
+        return True
+    return False
 
 # ==========================================
-# 3. 화면 구성 (UI)
+# 4. 화면 구성 (UI) - 기존과 동일
 # ==========================================
 st.set_page_config(page_title="메타인지 진단고사", layout="wide")
-init_db()
 
 # 세션 상태 초기화
 if 'user_phone' not in st.session_state:
@@ -102,11 +140,9 @@ if st.session_state['user_phone'] is None:
         name = st.text_input("이름")
         phone = st.text_input("전화번호 (010-0000-0000)")
         
-        # 학교 선택 로직
         school_option = st.radio("학교를 선택하세요", ["신원고등학교", "동산고등학교", "직접 입력"])
         custom_school = st.text_input("학교명 직접 입력") if school_option == "직접 입력" else ""
         
-        # 학년 선택
         st.markdown("**학년 (2026년 기준)**")
         grade = st.selectbox("학년 선택", ["중3", "고1", "고2", "고3"])
         
@@ -116,113 +152,66 @@ if st.session_state['user_phone'] is None:
             if name and phone:
                 final_school = custom_school if school_option == "직접 입력" else school_option
                 
-                # DB 확인 및 저장
-                existing_user = get_student(name, phone)
-                save_student(name, phone, final_school, grade)
-                
-                st.session_state['user_name'] = name
-                st.session_state['user_phone'] = phone
-                
-                # 이어하기 기능: DB에 저장된 마지막 파트 불러오기
-                if existing_user:
-                    st.session_state['current_part'] = existing_user[4] # last_part column
-                    st.success(f"반갑습니다 {name}님! {st.session_state['current_part']}부터 이어서 진행합니다.")
-                else:
-                    st.session_state['current_part'] = 1
+                with st.spinner("로그인 중..."):
+                    existing_user = get_student(name, phone)
+                    
+                    if existing_user:
+                        st.session_state['current_part'] = existing_user['last_part']
+                        # 이미 완료한 학생 처리
+                        if existing_user['last_part'] > 8:
+                            st.session_state['current_part'] = 9
+                        else:
+                            save_student(name, phone, final_school, grade) # 정보 갱신
+                    else:
+                        save_student(name, phone, final_school, grade)
+                        st.session_state['current_part'] = 1
+                    
+                    st.session_state['user_name'] = name
+                    st.session_state['user_phone'] = phone
                 
                 st.rerun()
             else:
                 st.error("이름과 전화번호를 정확히 입력해주세요.")
 
-# --- [화면 2] 시험 진행 페이지 (Part 1~8) ---
+# --- [화면 2] 시험 진행 페이지 ---
 elif st.session_state['current_part'] <= 8:
     part = st.session_state['current_part']
     st.title(f"📝 Part {part} 진행 중")
     st.markdown(f"**{st.session_state['user_name']}** 학생 | 현재 단계: {part} / 8")
     st.progress(part / 8)
 
-    # 파트별 문항 수 설정 (예시로 Part 1은 3문제라고 가정)
-    # 실제로는 파트별 문항수에 맞춰 range 조절 필요
-    num_questions = 3 if part < 8 else 2 # Part 8은 2문제 가정
+    num_questions = 3 if part < 8 else 2 
     
     with st.form(f"part_{part}_form"):
         answers = {}
         confidences = {}
-        
         st.info("문제를 보고 정답과 본인의 확신도를 체크해주세요.")
         
         for i in range(1, num_questions + 1):
             st.markdown(f"--- \n **문항 {i}**")
-            
             col1, col2 = st.columns([2, 1])
-            
             with col1:
-                # Part 8은 서술형(Text), 나머지는 객관식(Select)
                 if part == 8:
                     answers[i] = st.text_area(f"Q{i} 정답 입력", key=f"ans_{part}_{i}")
                 else:
                     answers[i] = st.selectbox(f"Q{i} 정답 선택", ["선택안함", "1", "2", "3", "4", "5"], key=f"ans_{part}_{i}")
-            
             with col2:
                 confidences[i] = st.radio(f"Q{i} 확신도", ["확신", "애매", "모름"], horizontal=True, key=f"conf_{part}_{i}")
 
         submit_part = st.form_submit_button(f"Part {part} 제출 및 다음 단계로")
         
         if submit_part:
-            # DB 저장
-            save_answers(st.session_state['user_phone'], part, answers, confidences)
-            
-            # 세션 업데이트
-            st.session_state['current_part'] += 1
+            with st.spinner("답안 저장 중..."):
+                save_answers(st.session_state['user_phone'], part, answers, confidences)
+                st.session_state['current_part'] += 1
             st.rerun()
 
-# --- [화면 3] 최종 분석 리포트 ---
+# --- [화면 3] 결과 페이지 ---
 else:
     st.title("📊 진단고사 종합 분석 리포트")
-    st.success("모든 진단이 완료되었습니다. 결과를 분석 중입니다...")
+    st.success("수고하셨습니다! 모든 데이터가 안전하게 저장되었습니다.")
     
-    # DB에서 전체 답안 가져오기
-    df = load_answers(st.session_state['user_phone'])
-    
-    # 분석 로직 (간소화된 버전)
-    # 실제로는 여기서 4분면 분석 로직이 돌아갑니다.
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("1. 파트별 분석 (Radar Chart)")
-        # 차트 예시 데이터
-        chart_data = pd.DataFrame({
-            'Part': ['어휘', '어법', '구문', '문해력', '논리', '구조', '전략', '서술형'],
-            'Score': [80, 60, 90, 40, 70, 50, 85, 30] # 실제 채점 결과로 대체될 부분
-        })
-        st.bar_chart(chart_data.set_index('Part'))
-        
-    with col2:
-        st.subheader("2. 메타인지 상태 (4분면)")
-        st.markdown("""
-        - **견고한 실력 (알고 맞힘):** 45%
-        - **불안한 득점 (찍어서 맞힘):** 20% ⚠️
-        - **위험한 착각 (틀렸는데 확신):** 15% 🚨
-        - **학습 부족 (모르고 틀림):** 20%
-        """)
-    
-    st.divider()
-    
-    st.subheader("3. 총평 및 처방")
-    st.markdown("""
-    **[현재 수준]**
-    - 어휘력은 우수하나, **문해력(Part 4)과 서술형(Part 8)**에서 큰 약점을 보입니다.
-    
-    **[우선 순위]**
-    1. **Part 4 (문해력):** 한국어 지문 요약 훈련이 시급합니다.
-    2. **Part 8 (서술형):** 조건부 영작의 감점 요인을 파악해야 합니다.
-    
-    **[종합 의견]**
-    김철수 학생은 '감'으로 푸는 습관이 있습니다(불안한 득점 20%). 
-    신원고 내신 대비를 위해서는 정확한 근거를 찾는 **논리 독해 클리닉** 수강을 권장합니다.
-    """)
-    
-    if st.button("처음으로 돌아가기"):
-        st.session_state.clear()
-        st.rerun()
+    if st.button("내 결과 확인하기 (로딩)"):
+        df = load_answers(st.session_state['user_phone'])
+        st.write("저장된 답안 데이터:", df)
+        # 여기에 추후 상세 분석 로직 연결
