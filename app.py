@@ -7,7 +7,7 @@ import plotly.express as px
 import time
 
 # ==========================================
-# [설정] 파트별 문항 상세 구성 & 전문가 분석 가이드
+# [설정] 파트별 문항 상세 구성
 # ==========================================
 EXAM_STRUCTURE = {
     1: {"title": "Part 1. 어휘력 (Vocabulary)", "type": "simple_obj", "count": 30, "level": "기초"},
@@ -144,20 +144,23 @@ def calculate_results(email):
     return pd.DataFrame(results)
 
 # ==========================================
-# 3. 전문가 분석 생성기 (Section 1~5)
+# 3. 서술형 텍스트 생성기 (500자/300자 이상 보장 로직)
 # ==========================================
 
-# (1) 예상 등급 분석
+# (1) 예상 등급 및 근거 (500자 이상)
 def generate_grade_analysis(df_results, student_name):
+    # 파트별 점수 계산
     part_scores = df_results.groupby('part')['is_correct'].mean() * 100
     all_parts = pd.Series(0, index=range(1, 9))
     part_scores = part_scores.combine_first(all_parts).sort_index()
 
-    score_basic = part_scores[1:3].mean()
-    score_syntax = part_scores[3:5].mean()
-    score_logic = part_scores[5:7].mean()
-    score_killer = part_scores[7:9].mean()
+    # 난이도 위계별 점수 그룹핑
+    score_basic = part_scores[1:3].mean()   # 기초
+    score_syntax = part_scores[3:5].mean()  # 구문
+    score_logic = part_scores[5:7].mean()   # 논리
+    score_killer = part_scores[7:9].mean()  # 킬러
 
+    # 메타인지 통계
     total_cnt = len(df_results)
     quad_counts = df_results['quadrant'].value_counts()
     delusion_ratio = (quad_counts.get("Delusion", 0) / total_cnt) * 100
@@ -165,37 +168,84 @@ def generate_grade_analysis(df_results, student_name):
 
     predicted_grade = ""
     grade_keyword = ""
-    analysis_text = ""
+    
+    # 서술형 분석 텍스트 빌더
+    analysis_text = f"{student_name} 학생의 진단 결과를 바탕으로 분석한 예상 등급과 그에 따른 상세 근거입니다. 현재의 점수는 단순한 숫자가 아니라, 기초 어휘부터 최상위 킬러 문항까지 이어지는 '학습의 위계'가 얼마나 견고한지를 보여주는 지표입니다. "
 
     if score_killer >= 85 and delusion_ratio < 10:
         predicted_grade = "1등급"
         grade_keyword = "완성형 인재 (The Perfectionist)"
-        analysis_text = f"**[전문가 통찰]**\n{student_name} 학생은 영어를 '감'으로 풀지 않습니다. 출제자의 의도를 꿰뚫고 있으며, 특히 1등급을 가르는 **'서술형 조건'**과 **'논리 함정'**을 피해가는 디테일이 완성되어 있습니다.\n\n**[판단 근거]**\n1. 킬러 파트(Part 7, 8) 정답률 {int(score_killer)}%: 고난도 구간을 완벽하게 방어했습니다.\n2. 낮은 착각 비율({int(delusion_ratio)}%): 메타인지가 매우 건강하여 학습 효율이 극대화된 상태입니다.\n\n수능 최저 충족은 물론 내신 1등급 방어가 가능한 최상의 상태입니다."
+        analysis_text += "현재 학생은 안정적인 1등급 구간에 위치해 있습니다. 가장 주목할 점은 변별력을 가르는 Part 7(전략)과 Part 8(서술형 영작)에서 보여준 탁월한 성취도입니다. 이는 단순히 영어를 감으로 푸는 것이 아니라, 출제자의 의도를 꿰뚫고 논리적 함정을 피해가는 디테일이 완성되어 있음을 의미합니다. 또한, 틀린 문제에 대해 섣불리 확신하지 않고 자신의 무지를 인정하는 건전한 메타인지 상태를 유지하고 있어, 학습 효율이 극대화된 상태입니다. 수능 최저 등급 충족은 물론, 내신에서의 1등급 방어도 충분히 가능한 최상의 컨디션입니다. 다만, 1등급을 지키는 것은 달성하는 것보다 어렵습니다. 자만하지 말고 실수를 '0'으로 만드는 훈련을 지속해야 합니다."
+    
     elif score_logic >= 80 or score_killer >= 60:
         predicted_grade = "2등급"
         grade_keyword = "불안한 상위권 (The Unstable Top)"
-        analysis_text = f"**[전문가 통찰]**\n가장 아쉬운 단계입니다. 학생은 본인이 1등급 실력이라고 생각할 수 있지만, 전문가의 눈에는 **'자의적 해석'** 습관이 보입니다. 지문의 단서를 객관적으로 연결하지 않고 배경지식으로 빈칸을 채우려는 경향이 있습니다.\n\n**[판단 근거]**\n1. 논리 파트 약세: 해석은 완벽하나 문장 간의 연결성(Part 5,6)에서 오답이 발생했습니다.\n2. 디테일 부족: 서술형 조건이나 함정을 놓쳐 부분 점수에 그치고 있습니다.\n\n이 **'한 끗 차이'**를 교정하지 않으면 만년 2등급에 머물게 됩니다."
+        analysis_text += "전반적으로 우수한 실력을 갖추고 있으나, 1등급의 문턱에서 아쉽게 좌절될 수 있는 '불안한 상위권' 단계입니다. 어휘나 구문 해석 능력은 훌륭하지만, 문장 간의 유기적 연결성을 파악하는 논리 파트(Part 5, 6)나 서술형 조건(Part 8)에서 감점이 발생하고 있습니다. 이는 지문에 있는 객관적 단서보다는 자신의 배경지식이나 감에 의존하여 빈칸을 채우려는 경향이 있음을 시사합니다. 또한 서술형에서 핵심 키워드는 파악했으나 문법적 디테일(태, 시제, 수일치)을 놓치는 경우가 있어, 내신 경쟁에서 치명적인 약점이 될 수 있습니다. 이 '한 끗 차이'를 교정하지 않으면 만년 2등급에 머물게 됩니다."
+
     elif score_syntax >= 70 or lucky_ratio >= 30:
         predicted_grade = "3등급"
         grade_keyword = "딜레마 구간 (The Keyword Reader)"
-        analysis_text = f"**[전문가 통찰]**\n전형적인 **'감독해'**의 한계에 부딪힌 상태입니다. 짧은 문장은 통하지만, 문장이 길어지는 고난도 지문에서는 무너질 수 있습니다.\n\n**[판단 근거]**\n1. 구문 해석력 부족: 단어는 아는데 문장을 구조적으로 엮어내는 힘이 약합니다.\n2. 높은 '불안한 잠재력'({int(lucky_ratio)}%): 맞힌 문제 중 상당수가 감에 의존했습니다.\n\n**'문장의 뼈대(Syntax)'**를 보는 눈을 새로 뜨지 않으면 성적 정체기가 올 것입니다."
+        analysis_text += "현재 점수만 보면 중상위권처럼 보일 수 있으나, 속을 들여다보면 위태로운 줄타기를 하고 있는 형국입니다. Part 1, 2의 기초 지식은 있으나, 이를 문장 단위로 엮어내는 '구문 해석력(Part 3)'이 부족합니다. 즉, 문장의 뼈대(주어, 동사)를 정확히 찾지 않고 아는 단어 몇 개를 조합해 소설을 쓰는 식의 '감독해'가 고착화되어 있습니다. 특히 맞힌 문제 중 상당수가 확신 없이 운(Lucky)에 의존한 것으로 나타났는데, 이는 시험 난이도가 조금만 올라가도 점수가 급락할 수 있음을 의미합니다. 지금 당장 점수에 안주하지 않고 문장을 구조적으로 분석하는 눈을 새로 뜨지 않으면, 고학년이 될수록 성적은 계단식으로 하락할 위험이 큽니다."
+
     elif score_basic >= 60:
         predicted_grade = "4등급"
         grade_keyword = "기초 공사 필요 (Structural Failure)"
-        analysis_text = f"**[전문가 통찰]**\n단순히 영어를 못하는 게 아니라 **'읽는 것을 두려워하는 상태'**입니다. 문법 용어에 거부감이 있고 문장을 만나면 심리적 장벽이 생깁니다.\n\n**[판단 근거]**\n1. 어휘 구멍: Part 1 정답률이 낮아 독해 전략 자체가 무의미합니다.\n2. 해석 불가: 문장 구조를 전혀 보지 못하고 있습니다.\n\n중등 수준의 **핵심 어휘**와 **기본 5형식**부터 다시 잡아야 합니다."
+        analysis_text += "냉정하게 진단할 때, 단순히 영어 실력이 부족한 것이 아니라 영어를 읽는 것에 대한 심리적 장벽이 존재하는 단계입니다. Part 1 어휘 정답률이 낮아 독해 전략 자체가 무의미하며, Part 3, 4에서는 문장 구조를 전혀 파악하지 못해 해석을 포기하는 경향이 보입니다. 이는 중등 과정의 기초 어휘와 문법 5형식 개념이 제대로 정립되지 않은 채 고등 영어를 접하고 있기 때문입니다. 지금 상태에서 무리하게 고난도 문제를 푸는 것은 밑 빠진 독에 물 붓기와 같습니다. 문제 풀이 스킬보다는 어휘 암기와 구문 기초 공사에 학습 시간의 80% 이상을 쏟아야 하는 '재활 훈련'이 시급합니다."
+
     else:
         predicted_grade = "5등급 이하"
         grade_keyword = "잠재적 원석 (The Potential)"
-        analysis_text = f"**[전문가 통찰]**\n아직 고등 영어를 소화할 준비가 되지 않았습니다. 하지만 어설픈 습관보다, 지금부터 올바르게 채워 넣으면 가장 드라마틱한 성장을 만들 수 있는 **'원석'**입니다.\n\n**[판단 근거]**\n1. 전 영역 기초 부족: 찍기 의존도가 높습니다.\n\n**중등 필수 과정**을 3개월 안에 끝내는 '압축 성장 커리큘럼'이 필요합니다."
+        analysis_text += "현재 학생은 아직 고등 영어를 소화할 준비가 되지 않은 상태입니다. 전 영역에 걸쳐 정답률이 낮고, 대부분의 문항을 찍거나 확신 없이 풀고 있습니다. 하지만 역설적으로 이는 가장 드라마틱한 성장을 만들 수 있는 기회이기도 합니다. 잘못된 습관이 고착화된 학생보다, 차라리 백지 상태에서 올바른 방법으로 채워 넣는 것이 훨씬 빠른 성장을 가져올 수 있습니다. 지금은 부끄러워할 때가 아니라, 중학교 필수 어휘와 문법부터 다시 시작하는 용기가 필요합니다. 3개월간의 '압축 기초 완성 커리큘럼'을 통해 바닥부터 다시 다진다면, 충분히 상위권으로 도약할 수 있는 잠재력을 가지고 있는 원석입니다."
 
     return predicted_grade, grade_keyword, analysis_text
 
-# (2) 메타인지 분석 (3대 지표)
+# (2) 영역별 역량 분석 (500자 이상)
+def generate_domain_analysis(df_results, student_name):
+    # 영역별 점수 계산
+    part_scores = df_results.groupby('part')['is_correct'].mean() * 100
+    all_parts = pd.Series(0, index=range(1, 9))
+    part_scores = part_scores.combine_first(all_parts).sort_index()
+    
+    # 3대 역량 그룹핑
+    score_fund = part_scores[1:3].mean() # 기초
+    score_logic = part_scores[3:7].mean() # 논리/독해 (P3~P6)
+    score_killer = part_scores[7:9].mean() # 실전/응용 (P7,P8)
+    
+    analysis_text = f"학생의 8개 파트 성취도를 '기초 체력', '독해 논리력', '실전 응용력'이라는 3대 핵심 역량으로 재구성하여 분석했습니다. 이 분석은 학생이 점수를 얻는 방식과 잃는 방식의 패턴을 명확하게 보여줍니다.\n\n"
+    
+    # 1. 기초 체력 분석
+    analysis_text += f"첫째, 어휘와 어법을 포함한 **'기초 체력' 영역은 {int(score_fund)}점**입니다. "
+    if score_fund >= 80:
+        analysis_text += "이는 영어를 학습할 수 있는 기본적인 재료가 아주 훌륭하게 갖춰져 있음을 의미합니다. 단어 암기나 문법 개념 이해에 있어 성실함이 돋보이며, 이를 바탕으로 상위 단계로 나아갈 준비가 되어 있습니다. "
+    else:
+        analysis_text += "건물을 지을 벽돌과 시멘트가 부족한 상태입니다. 어휘량이 부족하면 아무리 좋은 독해 스킬을 배워도 적용할 수 없습니다. 매일 꾸준한 단어 암기와 문법 개념 정리가 선행되지 않으면 이후 학습은 사상누각이 될 것입니다. "
+        
+    # 2. 독해 논리력 분석
+    analysis_text += f"\n\n둘째, 문장을 해석하고 글의 맥락을 파악하는 **'독해 논리력' 영역은 {int(score_logic)}점**입니다. "
+    if score_logic >= 80:
+        analysis_text += "문장 구조를 보는 눈이 정확하고, 글의 전개 방식을 파악하는 논리적 사고력이 뛰어납니다. 단순히 번역하는 수준을 넘어 필자의 의도를 파악하는 '진짜 독해'를 하고 있습니다. "
+    elif score_logic >= 60:
+        analysis_text += "해석은 어느 정도 되지만, 글 전체를 관통하는 주제를 찾거나 문장 간의 연결 고리를 찾는 데 어려움을 겪고 있습니다. 이는 나무만 보고 숲을 보지 못하는 독해 습관 때문입니다. "
+    else:
+        analysis_text += "문장을 만났을 때 구조적으로 분석하지 못하고 당황하는 경향이 큽니다. 감에 의존한 찍기식 독해를 하고 있어, 지문의 난이도에 따라 점수 편차가 매우 클 것으로 예상됩니다. "
+        
+    # 3. 실전 응용력 분석
+    analysis_text += f"\n\n셋째, 고난도 문제 해결과 영작을 포함한 **'실전 응용력' 영역은 {int(score_killer)}점**입니다. "
+    if score_killer >= 80:
+        analysis_text += "1등급을 결정짓는 킬러 문항에 대한 방어력이 상당합니다. 특히 서술형 조건이나 함정 문제에서도 흔들리지 않는 디테일은 학생의 가장 큰 무기입니다. "
+    else:
+        analysis_text += "앞선 단계가 잘 되어있더라도, 결국 점수를 깎아먹는 것은 이 구간입니다. 시간 관리 부족이나 서술형에서의 사소한 실수들이 등급 하락의 주원인이 되고 있습니다. 실전과 같은 환경에서의 훈련이 필요합니다."
+        
+    analysis_text += "\n\n종합적으로 볼 때, 학생은 특정 영역의 강점을 살리기보다 무너진 균형을 맞추는 것이 급선무입니다. 위 그래프에서 가장 낮게 나타난 막대그래프가 바로 학생의 '성적 발목'을 잡고 있는 구간임을 인지하고, 해당 영역에 학습 에너지를 집중해야 합니다."
+    
+    return analysis_text
+
+# (3) 메타인지 분석 (500자 이상)
 def generate_meta_analysis(df_results, student_name):
     total_cnt = len(df_results)
     if total_cnt == 0: return "데이터 부족"
-    quad_counts = df_results['quadrant'].value_counts()
     
+    quad_counts = df_results['quadrant'].value_counts()
     cnt_master = quad_counts.get("Master", 0)
     cnt_lucky = quad_counts.get("Lucky", 0)
     cnt_delusion = quad_counts.get("Delusion", 0)
@@ -207,24 +257,27 @@ def generate_meta_analysis(df_results, student_name):
     error_resistance = (cnt_delusion / wrong_total * 100) if wrong_total > 0 else 0
     calibration_acc = ((cnt_master + cnt_deficiency) / total_cnt) * 100
     
-    text = f"**[전문가 심층 진단: 3대 핵심 지표]**\n\n단순 점수가 아닌, 점수의 '질(Quality)'을 분석했습니다.\n"
-    text += f"1. **득점 순도: {int(score_purity)}%** (운을 제외한 진짜 실력의 비율)\n"
-    text += f"2. **오답 고집도: {int(error_resistance)}%** (틀린 것을 맞다고 우기는 고집의 정도)\n"
-    text += f"3. **자가 진단 정확도: {int(calibration_acc)}%** (자신을 객관적으로 보는 능력)\n\n"
+    text = f"단순히 몇 개를 틀렸는지보다 중요한 것은, 학생이 자신의 지식 상태를 얼마나 정확하게 인지하고 있느냐입니다. {student_name} 학생의 답안 데이터를 '확신도'와 교차 분석하여 3가지 핵심 지표를 도출했습니다.\n\n"
     
-    if error_resistance >= 50:
-        text += f"🔴 **가장 시급한 문제: '높은 오답 고집도'**\n틀린 문제의 절반 이상을 '맞았다'고 확신합니다. 잘못된 개념이 고착화된 상태로, 1:1 클리닉을 통한 '오개념 깨기'가 필수적입니다."
-    elif score_purity < 70:
-        text += f"🟡 **주의 신호: '낮은 득점 순도'**\n현재 점수는 '거품'이 끼어 있습니다. 감으로 맞힌 문제가 많아, 난이도가 오르면 성적이 급락할 수 있습니다. 확신 강화 훈련이 필요합니다."
-    elif calibration_acc < 80:
-        text += f"🟣 **개선 포인트: '낮은 메타인지'**\n아는 것과 모르는 것을 구분하지 못해 학습 효율이 떨어집니다. '백지 복습'을 통해 메타인지를 켜야 합니다."
+    text += f"첫째, 학생의 **득점 순도(Score Purity)는 {int(score_purity)}%**입니다. 이는 맞힌 문제 중에서 운이 아니라 진짜 실력으로 맞힌 비율을 뜻합니다. "
+    if score_purity < 70:
+        text += "현재 점수에는 상당한 '거품'이 끼어 있습니다. 맞힌 문제라 하더라도 다시 풀면 틀릴 가능성이 높은 '불안한 잠재력' 상태의 문항이 많습니다. 이 점수를 자신의 실력으로 착각하면, 실제 시험에서 점수가 급락하는 낭패를 볼 수 있습니다. "
     else:
-        text += f"🟢 **긍정 신호: '건전한 메타인지'**\n자신의 상태를 정확히 파악하고 있어 학습 흡수력이 매우 높습니다. 킬러 문항 도전으로 실력을 완성하세요."
+        text += "매우 건강한 수치입니다. 학생이 받은 점수는 요행이 아닌 탄탄한 실력에 기반하고 있어, 어떤 난이도의 시험에서도 쉽게 무너지지 않는 저력을 보여줄 것입니다. "
+        
+    text += f"\n\n둘째, **오답 고집도(Error Resistance)는 {int(error_resistance)}%**입니다. 이는 틀린 문제 중에서 '몰라서' 틀린 것이 아니라 '맞았다고 착각'한 비율입니다. "
+    if error_resistance >= 50:
+        text += "매우 위험한 신호입니다. 학생은 잘못된 개념을 올바른 지식이라고 강하게 믿고 있는 상태입니다. 이런 경우, 일반적인 수업을 들으면 선생님의 설명을 자신의 잘못된 논리에 맞춰 왜곡해서 받아들이게 됩니다. 스스로의 오개념을 깨뜨리는 과정 없이는 성적 향상이 불가능한 '교정 고위험군'입니다. "
+    else:
+        text += "양호한 편입니다. 학생은 자신의 부족함을 인정할 줄 아는 열린 태도를 가지고 있어, 올바른 학습법이 제시되면 빠르게 성적을 올릴 수 있는 '학습 스펀지'와 같은 상태입니다. "
+        
+    text += f"\n\n셋째, **자가 진단 정확도(Calibration Accuracy)는 {int(calibration_acc)}%**입니다. 자신이 아는 것과 모르는 것을 구별하는 능력입니다. 이 능력이 높을수록 아는 것은 건너뛰고 모르는 것에 집중하는 효율적인 학습이 가능합니다.\n\n"
     
-    text += f"\n\n**[결론]**\n결론적으로, 점수 뒤에 숨겨진 이 메타인지 패턴을 이해해야 합니다. 모르는 건 죄가 아니지만, **'안다고 착각하는 것'**은 입시에서 가장 큰 적입니다. 이번 진단은 이 '착각'을 수치화하여 보여주었다는 점에서 큰 의미가 있습니다."
+    text += "결론적으로, 점수 뒤에 숨겨진 이 메타인지 패턴을 이해해야 합니다. 모르는 건 죄가 아니지만, '안다고 착각하는 것'은 입시에서 가장 큰 적입니다. 이번 진단은 이 '착각'을 수치화하여 보여주었다는 점에서 큰 의미가 있습니다."
+    
     return text
 
-# (3) 파트별 상세 분석
+# (4) 파트별 상세 분석 (각 300자 이상)
 def generate_part_specific_analysis(df_results, student_name):
     part_stats = {}
     for p in range(1, 9):
@@ -241,96 +294,133 @@ def generate_part_specific_analysis(df_results, student_name):
             'delusion': (quads.get("Delusion", 0) / total) * 100
         }
 
-    strengths, weaknesses, risks = [], [], []
-    for p, stat in part_stats.items():
-        title = EXAM_STRUCTURE[p]['title'].split('.')[1].strip()
-        if stat['score'] >= 80 and stat['master'] >= 60: strengths.append(title)
-        elif stat['score'] < 60: weaknesses.append(title)
-        elif stat['lucky'] >= 30 or stat['delusion'] >= 20: risks.append(title)
-
-    overview_text = f"**[Part별 역량 종합 진단]**\n\n"
-    if strengths: overview_text += f"🟢 **확실한 강점:** {', '.join(strengths)}\n이 영역은 학생의 **'전략적 무기'**입니다. 감각 유지를 추천합니다.\n\n"
-    if risks: overview_text += f"🟡 **위험한 뇌관:** {', '.join(risks)}\n점수는 나왔지만 **'가짜 실력'**이 껴있습니다. 시험장에서 배신당할 수 있으니 재검토하세요.\n\n"
-    if weaknesses: overview_text += f"🔴 **시급한 약점:** {', '.join(weaknesses)}\n등급 상승을 가로막는 **'학습 병목'** 구간입니다. 최우선 순위로 학습하세요."
-    if not strengths and not risks and not weaknesses: overview_text += "전반적으로 평이하나 압도적인 강점이 부족합니다."
-
-    expert_comments = {
-        1: {'cause': "단어의 표면적 뜻만 암기하고 문맥 속 '다의어' 활용 능력이 부족합니다.", 'risk': "해석이 매끄럽게 안 되는 현상이 발생합니다.", 'solution': "예문을 통한 'Context 학습'이 필요합니다."},
-        2: {'cause': "문법 원리를 파악하지 못하고 '감'에 의존하고 있습니다.", 'risk': "내신 서술형 감점 및 수능 어법 확신 부족으로 이어집니다.", 'solution': "정답 근거를 설명하는 '티칭' 훈련이 필요합니다."},
-        3: {'cause': "문장 뼈대를 못 찾고 단어를 조합해 소설을 쓰고 있습니다.", 'risk': "고난도 긴 문장에서 오독할 확률이 90% 이상입니다.", 'solution': "**'청킹(Chunking)'** 훈련과 직독직해 연습이 시급합니다."},
-        4: {'cause': "한글 해석을 봐도 무슨 말인지 모르는 '비문학적 소양' 부족입니다.", 'risk': "빈칸 추론 등 고난도 유형에서 무너집니다.", 'solution': "한 문장 요약 훈련과 사고 구체화 훈련이 필요합니다."},
-        5: {'cause': "접속사, 지시어 등 논리 연결 고리를 간과하고 있습니다.", 'risk': "순서 배열 유형에서 시간을 허비하게 됩니다.", 'solution': "앞뒤 문장의 논리적 관계(순접/역접)를 따지는 습관을 길러야 합니다."},
-        6: {'cause': "세부 해석에 매몰되어 글 전체의 '주제'를 놓치고 있습니다.", 'risk': "지문을 다 읽고도 내용을 모르는 상황이 반복됩니다.", 'solution': "첫/마지막 문장으로 결론을 예측하는 '거시적 독해'가 필요합니다."},
-        7: {'cause': "유형별 전략 없이 무작정 읽는 비효율적 방식을 고수합니다.", 'risk': "시간 부족으로 쉬운 문제도 놓치게 됩니다.", 'solution': "Scanning/Skimming 전략을 체화해야 합니다."},
-        8: {'cause': "문법 지식을 Output으로 전환하는 훈련이 부족합니다. 디테일에 둔감합니다.", 'risk': "내신 1등급을 놓치는 결정적 원인이 됩니다.", 'solution': "손으로 쓰는 영작 훈련과 자가 첨삭 습관이 필요합니다."}
+    # 파트별 전문가 분석 DB (길고 상세한 텍스트)
+    expert_db = {
+        1: { # 어휘력
+            'desc': "어휘력은 모든 영어 학습의 뿌리이자 기초 체력입니다.",
+            'low_msg': "단순히 단어의 스펠링과 뜻 하나를 1:1로 매칭해서 외우는 기계적인 암기 방식에 머물러 있습니다. 문맥 속에서 단어가 어떻게 변형되고 활용되는지 파악하는 '응용 어휘력'이 부족합니다. 아는 단어라고 생각했지만 다의어 문제에서 틀리는 경우가 이에 해당합니다.",
+            'high_msg': "기본적인 어휘량이 풍부하고 문맥에 맞는 의미를 파악하는 능력이 탁월합니다. 다만 유의어와 반의어, 파생어까지 확장하는 학습을 통해 어휘의 깊이를 더한다면 고난도 빈칸 추론 문제에서도 강력한 무기가 될 것입니다.",
+            'action': "단어장을 눈으로만 보지 말고, 예문 속에서 단어의 뉘앙스를 익히는 Context 학습법으로 전환해야 합니다. 특히 틀린 단어는 반드시 나만의 단어장에 기록하여 누적 복습해야 합니다."
+        },
+        2: { # 어법
+            'desc': "문법은 문장을 정확하게 해석하기 위한 규칙이자 약속입니다.",
+            'low_msg': "문법 용어에 대한 거부감이 있거나, 규칙을 암기만 하고 실제 문장에 적용하는 훈련이 부족합니다. '감'에 의존하여 어색한 것을 고르는 방식은 고등 내신 서술형과 수능 어법에서 통하지 않습니다. 문법 문제의 출제 의도(수일치, 태, 관계사 등)를 파악하지 못하고 있습니다.",
+            'high_msg': "문법적 원리를 정확히 이해하고 있으며, 이를 문제에 적용하는 능력이 우수합니다. 이제는 단순히 맞는 것을 고르는 것을 넘어, 틀린 보기가 왜 틀렸는지를 문법 용어를 사용하여 설명할 수 있는 '티칭(Teaching)' 수준까지 끌어올려야 합니다.",
+            'action': "문제를 풀 때 감으로 찍는 습관을 버리고, 정답의 근거를 문법적으로 설명하는 훈련이 필요합니다. 오답 고집도가 높다면 백지 복습을 통해 개념을 재정립해야 합니다."
+        },
+        3: { # 구문
+            'desc': "문장의 뼈대(주어, 동사)를 찾아내어 정확한 의미를 파악하는 능력입니다.",
+            'low_msg': "긴 문장을 만나면 당황하여 구조를 보지 못하고, 아는 단어 몇 개를 조합해 마음대로 상상의 나래를 펼치는 '소설 쓰기식 독해'를 하고 있습니다. 이는 문장의 주성분과 수식어구를 구별하지 못하기 때문이며, 이 습관을 고치지 않으면 고학년이 될수록 점수가 곤두박질치게 됩니다.",
+            'high_msg': "복잡한 문장에서도 주어와 동사를 정확히 찾아내고, 수식어구를 발라내는 구조 분석 능력이 뛰어납니다. 직독직해의 속도와 정확도를 높이기 위해, 더욱 길고 호흡이 긴 만연체 문장을 분석하는 고난도 훈련을 병행하면 좋습니다.",
+            'action': "모든 문장에 주어(S), 동사(V), 목적어(O), 보어(C)를 표시하고, 수식어구는 괄호로 묶는 '청킹(Chunking)' 훈련을 매일 수행해야 합니다. 해석은 정확성에서 나옵니다."
+        },
+        4: { # 문해력
+            'desc': "글의 내용을 단순히 번역하는 것을 넘어, 속뜻을 이해하는 능력입니다.",
+            'low_msg': "영어 해석의 문제라기보다는, 한글 해석본을 읽어도 무슨 말인지 모르는 '언어적 비문학 소양'의 부족이 의심됩니다. 글의 요지를 파악하지 못하고 지엽적인 정보에 매몰되거나, 추상적인 개념을 구체화하여 이해하는 사고력이 부족하여 빈칸 추론 등에서 어려움을 겪습니다.",
+            'high_msg': "텍스트 이면에 숨겨진 함축적 의미를 파악하고, 필자가 말하고자 하는 요지를 정확하게 캐치하는 능력이 돋보입니다. 추상적이고 철학적인 지문에서도 논지를 놓치지 않는 집중력을 유지한다면 최상위권 도약이 가능합니다.",
+            'action': "지문을 읽고 나서 '그래서 필자가 하고 싶은 말이 한 문장으로 뭐지?'라고 요약해보는 훈련이 필수적입니다. 국어 비문학 지문을 읽듯이 글의 논리 구조를 파악하세요."
+        },
+        5: { # 문장 연계
+            'desc': "문장과 문장 사이의 논리적 연결 고리를 파악하는 능력입니다.",
+            'low_msg': "문장을 독립적으로만 해석할 뿐, 앞 문장과 뒷 문장이 순접인지 역접인지, 원인인지 결과인지를 따지지 않습니다. 접속사, 대명사, 지시어가 문맥에서 어떤 신호등 역할을 하는지 간과하고 있어 순서 배열이나 문장 삽입 유형에서 근거를 찾지 못하고 헤매게 됩니다.",
+            'high_msg': "문장 간의 유기적인 결합 관계를 잘 파악하고 있으며, 지시어와 연결사가 가리키는 바를 정확히 인지하고 있습니다. 이러한 논리력은 간접 쓰기 영역(순서, 삽입)에서 큰 강점이 될 것입니다.",
+            'action': "접속사와 지시어에 반드시 세모 표시를 하고, 그것이 문맥의 흐름을 어떻게 바꾸거나 이어주는지 도식화하는 연습을 해야 합니다. 감이 아닌 논리로 푸세요."
+        },
+        6: { # 지문 이해
+            'desc': "글 전체를 관통하는 주제와 구조를 거시적으로 보는 능력입니다.",
+            'low_msg': "나무만 보고 숲을 보지 못하는 상태입니다. 세부적인 해석에만 집착하다 보니, 글을 다 읽고 나서도 정작 '주제'가 무엇인지 놓치게 됩니다. 이는 시간 부족 현상의 주원인이기도 하며, 주제 제목 유형에서 매력적인 오답에 쉽게 낚이는 원인이 됩니다.",
+            'high_msg': "글의 도입부와 결론부를 통해 전체 내용을 예측하고 구조화하는 '거시적 독해(Macro-Reading)' 능력이 탁월합니다. 숲을 보는 눈을 가졌기에 빠른 시간 내에 정확하게 요지를 파악할 수 있습니다.",
+            'action': "첫 문장과 마지막 문장을 먼저 읽고 글의 전개를 예측하는 훈련, 그리고 글의 구조(통념-반박, 예시-결론 등)를 파악하는 연습이 필요합니다."
+        },
+        7: { # 문제 풀이
+            'desc': "유형별 특성에 맞춰 효율적으로 정답에 접근하는 전략적 능력입니다.",
+            'low_msg': "모든 문제를 처음부터 끝까지 정직하게만 읽으려는 비효율적인 방식을 고수하고 있습니다. 문제 유형에 따라 어디를 힘주어 읽고 어디를 힘빼고 읽어야 하는지(Skimming & Scanning) 전략이 부재하여, 항상 시간이 부족하고 뒷부분 쉬운 문제를 놓치는 안타까운 상황이 발생합니다.",
+            'high_msg': "문제 유형별 접근법을 잘 이해하고 있으며, 출제자가 요구하는 정보를 지문에서 빠르게 찾아내는 스킬이 갖춰져 있습니다. 실전 모의고사 훈련을 통해 시간 관리 능력만 더 다듬으면 됩니다.",
+            'action': "유형별 풀이 매뉴얼을 체화해야 합니다. 주제문은 어디에 위치하는지, 세부 정보 파악은 어떻게 대조하는지 등 기술적인 부분을 보완하세요."
+        },
+        8: { # 서술형
+            'desc': "문법적 지식을 바탕으로 조건에 맞게 정확한 문장을 구성하는 능력입니다.",
+            'low_msg': "머릿속에 있는 내용을 영어로 출력(Output)하는 훈련이 턱없이 부족합니다. 단어는 알지만 어순 배열이 엉망이거나, 수일치/시제/태/관사 등 사소하지만 결정적인 **'마이크로 디테일'**에서 감점을 당합니다. 이는 1등급을 가르는 가장 큰 변수입니다.",
+            'high_msg': "문법적 제약 조건을 완벽하게 이해하고 있으며, 이를 문장으로 구현해내는 작문 능력이 수준급입니다. 감점 요인을 스스로 찾아낼 수 있는 꼼꼼함까지 갖추고 있어 내신 킬러 문항에서도 고득점이 기대됩니다.",
+            'action': "눈으로 푸는 영어는 그만해야 합니다. 직접 손으로 써보고, 본인이 쓴 답안을 선생님의 시각에서 꼼꼼하게 자가 첨삭하는 습관을 길러야 합니다. 마침표 하나까지 신경 쓰세요."
+        }
     }
 
     detail_analysis_dict = {}
     for p in range(1, 9):
         stat = part_stats[p]
-        info = expert_comments[p]
-        text = f"**1. 진단:** 점수 {stat['score']}점. "
-        if stat['score'] >= 80: text += "우수하나 " + ("운이 작용했습니다." if stat['lucky']>=30 else "안정적입니다.")
-        elif stat['score'] >= 60: text += "중위권이며 " + ("개념 정립이 필요합니다." if stat['lucky']<30 else "찍은 문제가 많습니다.")
-        else: text += "기초 학습이 시급합니다."
-        text += f"\n**2. 원인:** {info['cause']}\n**3. 위험:** {info['risk']}\n**4. 솔루션:** {info['solution']}"
+        info = expert_db[p]
+        
+        # 상세 분석 텍스트 조립
+        text = f"{EXAM_STRUCTURE[p]['title']} 영역의 점수는 {stat['score']}점입니다. {info['desc']}\n\n"
+        
+        # 현상 및 원인 분석
+        if stat['score'] >= 80:
+            text += f"**[진단]** 매우 우수한 성취도를 보이고 있습니다. {info['high_msg']} "
+            if stat['lucky'] >= 30:
+                text += "다만, 맞힌 문제 중 일부는 확신 없이 감으로 푼 경향이 있어 주의가 필요합니다. 운도 실력이지만, 완벽한 1등급을 위해서는 근거를 명확히 하는 습관이 필요합니다."
+            elif stat['delusion'] >= 20:
+                text += "하지만 틀린 소수의 문제에 대해 '맞았다'고 착각하는 경향이 발견되었습니다. 이는 최상위권 경쟁에서 치명적인 실수가 될 수 있으므로 오답 원인을 철저히 분석해야 합니다."
+        else:
+            text += f"**[진단]** 다소 아쉬운 결과가 나왔습니다. {info['low_msg']} "
+            if stat['score'] < 60:
+                text += "기초 학습이 부족하여 해당 영역에 대한 자신감이 많이 떨어져 있는 상태로 보입니다. "
+            if stat['lucky'] >= 30:
+                text += "특히 모르면서도 찍어서 맞힌 문제가 많아, 실제 실력은 점수보다 더 낮을 수 있다는 점을 직시해야 합니다. "
+        
+        # 처방 (공통 + 점수대별)
+        text += f"\n\n**[전문가 처방]**\n이 파트를 정복하기 위해서는 {info['action']}"
+        
         detail_analysis_dict[p] = text
 
-    return overview_text, detail_analysis_dict
+    return detail_analysis_dict
 
-# (4) 총평 및 솔루션 (완벽 고도화 반영)
+# (5) 총평 및 솔루션 (완벽 고도화)
 def generate_total_review(df_results, student_name):
-    # 파트별 점수 계산
     part_scores = df_results.groupby('part')['is_correct'].mean() * 100
     all_parts = pd.Series(0, index=range(1, 9))
     part_scores = part_scores.combine_first(all_parts).sort_index()
     
-    # 1. 진단 요약 (철저한 데이터 기반)
-    # 가장 점수가 낮은 파트 찾기 (점수가 같으면 낮은 파트 번호가 우선)
-    # sort_values(kind='mergesort')는 stable sort이므로 인덱스 순서 유지됨
+    # 정답률이 가장 낮은 파트 찾기 (낮은 번호 우선)
     sorted_parts = part_scores.sort_values(kind='mergesort')
     weakest_part = sorted_parts.index[0]
     weakest_score = sorted_parts.iloc[0]
     weakest_title = EXAM_STRUCTURE[weakest_part]['title'].split('.')[1].strip()
     
-    summary = f"**[진단 요약]**\n"
-    summary += f"데이터 분석 결과, {student_name} 학생의 성적 향상을 가로막는 결정적인 병목 구간은 **'{weakest_title} (Part {weakest_part})'**입니다. "
+    # 1. 진단 요약 (Fact-based)
+    summary = f"데이터 분석 결과, {student_name} 학생의 성적 향상을 가로막는 결정적인 병목 구간은 **'{weakest_title} (Part {weakest_part})'**입니다. "
     summary += f"해당 영역의 정답률은 {int(weakest_score)}%로, 전체 8개 영역 중 가장 취약합니다. "
     
-    # 메타인지 데이터 추가 반영
     quads = df_results[df_results['part'] == weakest_part]['quadrant'].value_counts()
     delusion_cnt = quads.get("Delusion", 0)
-    
     if delusion_cnt > 0:
-        summary += f"특히 해당 파트에서 오답임에도 정답이라고 확신한 문항이 발견되었습니다. 이는 단순 실수가 아니라 개념의 오류가 있음을 시사합니다."
+        summary += f"특히 해당 파트에서 오답임에도 정답이라고 확신한 문항이 {delusion_cnt}개나 발견되었습니다. 이는 단순 실수가 아니라 개념의 오류가 뿌리 깊게 박혀 있음을 시사합니다."
     else:
-        summary += f"기초 개념 자체가 정립되지 않아 문제 접근에 어려움을 겪고 있는 상태입니다."
-        
+        summary += f"해당 파트에 대한 기초 개념 자체가 정립되지 않아 문제 접근 자체에 어려움을 겪고 있는 상태입니다."
     summary += "\n\n"
 
-    # 2. 우선순위 로드맵 (No Timeframe, Specific Goal)
+    # 2. 우선순위 로드맵 (No Timeframe)
     summary += f"**[우선순위 로드맵]**\n"
-    summary += f"성적 상승을 위한 제1 우선순위는 **Part {weakest_part}의 보완**입니다.\n"
+    summary += f"성적 상승을 위한 제1 우선순위는 **Part {weakest_part}의 보완**입니다. 다른 공부보다 이것부터 해결해야 합니다.\n"
     
     target_text = ""
     if weakest_part in [1, 2]:
-        target_text = "- **목표:** 중등/고등 필수 어휘 및 문법 개념의 '완전 학습'.\n- **실천:** 문제 풀이보다는 개념 암기와 예문 학습 비중을 늘려야 합니다."
+        target_text = "- **목표:** 중등/고등 필수 어휘 및 문법 개념의 '완전 학습'.\n- **실천:** 문제 풀이보다는 개념 암기와 예문 학습 비중을 늘려야 합니다. 뿌리가 썩으면 열매를 맺을 수 없습니다."
     elif weakest_part in [3, 4]:
-        target_text = "- **목표:** 감으로 읽는 습관을 버리고 문장 성분을 쪼개는 '구조 독해력' 확보.\n- **실천:** 모든 문장의 주어/동사를 표시하고 끊어 읽는 정독 훈련을 수행해야 합니다."
+        target_text = "- **목표:** 감으로 읽는 습관을 버리고 문장 성분을 쪼개는 '구조 독해력' 확보.\n- **실천:** 모든 문장의 주어/동사를 표시하고 끊어 읽는 정독 훈련을 수행해야 합니다. 해석이 되어야 논리가 섭니다."
     elif weakest_part in [5, 6]:
-        target_text = "- **목표:** 글의 전개 방식을 파악하여 정답의 '논리적 근거' 찾기.\n- **실천:** 접속사와 지시어를 단서로 문장 간의 관계를 도식화하는 연습이 필요합니다."
+        target_text = "- **목표:** 글의 전개 방식을 파악하여 정답의 '논리적 근거' 찾기.\n- **실천:** 접속사와 지시어를 단서로 문장 간의 관계를 도식화하는 연습이 필요합니다. 왜 답인지 설명할 수 있어야 합니다."
     else: # 7, 8
-        target_text = "- **목표:** 실전 감각 극대화 및 서술형 감점 요인(디테일) 제거.\n- **실천:** 시간 제한을 둔 실전 풀이와 영작 후 스스로 문법 오류를 찾는 자가 첨삭 훈련이 필수입니다."
-        
+        target_text = "- **목표:** 실전 감각 극대화 및 서술형 감점 요인(디테일) 제거.\n- **실천:** 시간 제한을 둔 실전 풀이와 영작 후 스스로 문법 오류를 찾는 자가 첨삭 훈련이 필수입니다. 1점 차이로 등급이 갈립니다."
     summary += target_text + "\n\n"
 
-    # 3. 학원의 역할 (Specific Action + Clinic)
+    # 3. 학원의 역할 (Concrete Action)
     summary += f"**[대세 영어학원의 솔루션]**\n"
-    summary += f"저희 학원은 진단된 약점을 보완하기 위해 다음과 같은 수업을 진행합니다.\n"
+    summary += f"저희 학원은 {student_name} 학생의 약점을 보완하기 위해 다음과 같은 구체적인 지도를 약속합니다.\n"
     
     class_action = ""
     if weakest_part in [1, 2]:
-        class_action = "매 수업 엄격한 단어/문법 테스트를 통해 통과할 때까지 무한 반복 관리합니다."
+        class_action = "매 수업 엄격한 단어/문법 백지 테스트를 통해 통과할 때까지 무한 반복 관리합니다."
     elif weakest_part in [3, 4]:
         class_action = "수업 시간에 강사와 함께 문장을 쪼개고 분석하는 '구문 독해 시뮬레이션'을 집중적으로 훈련합니다."
     elif weakest_part in [5, 6]:
@@ -340,14 +430,12 @@ def generate_total_review(df_results, student_name):
     
     summary += f"- **정규 수업:** {class_action}\n"
     
-    # 클리닉 로직 (약점이 심각하거나 오개념이 많으면 클리닉 제안)
-    total_delusion = df_results['quadrant'].value_counts().get("Delusion", 0)
-    if weakest_score < 60 or total_delusion >= 3:
-        summary += "- **특별 케어:** 정규 수업만으로는 부족할 수 있습니다. **'매주 진행되는 1:1 클리닉'** 시간을 통해, 학생이 이해하지 못한 부분을 개별적으로 질문받고 교정해드리겠습니다.\n"
+    # 클리닉 로직
+    summary += "- **특별 케어 (Clinic):** 정규 수업만으로는 부족한 부분을 채우기 위해, **'매주 진행되는 1:1 클리닉'** 시간을 활용합니다. 학생이 이해하지 못한 부분을 개별적으로 질문받고, 오개념이 교정될 때까지 밀착 지도하겠습니다.\n"
     
     summary += "\n"
 
-    # 4. 필수 결론 멘트 (Fixed)
+    # 4. 필수 결론 멘트
     summary += "**정밀한 진단은 모두 끝났습니다. 이제 남은 것은 처방전입니다. 대세 영어학원 지축 캠퍼스에서 황성진, 김찬종 두 명의 원장이 직접 책임지겠습니다. 다시 돌아오지 않는 이 시간, 우리 아이에게 가장 필요한 학습으로 지도할 것을 약속 드립니다.**"
 
     return summary
@@ -364,18 +452,20 @@ def show_report_dashboard(df_results, student_name):
         return
 
     pred_grade, grade_kw, grade_txt = generate_grade_analysis(df_results, student_name)
+    domain_txt = generate_domain_analysis(df_results, student_name)
     meta_txt = generate_meta_analysis(df_results, student_name)
-    ov_txt, det_dict = generate_part_specific_analysis(df_results, student_name)
+    det_dict = generate_part_specific_analysis(df_results, student_name)
     total_txt = generate_total_review(df_results, student_name)
     
     total_q = len(df_results)
     correct_q = len(df_results[df_results['is_correct'] == True])
+    wrong_q = total_q - correct_q
     score = int((correct_q / total_q) * 100) if total_q > 0 else 0
     
     # Header
     c1, c2, c3, c4 = st.columns([2, 2, 3, 2])
-    c1.metric("종합 점수", f"{score}점")
-    c2.metric("정답 수", f"{correct_q} / {total_q}")
+    c1.metric("종합 점수", f"{score}점 / 100점")
+    c2.metric("정답 수", f"{correct_q} / {wrong_q} (정답/오답)")
     c3.metric("예상 등급", f"{pred_grade} ({grade_kw.split('(')[0]})")
     with c4:
         st.button("🖨️ PDF로 저장", on_click=None, type="primary", key="print_btn")
@@ -385,7 +475,7 @@ def show_report_dashboard(df_results, student_name):
     
     # 1. 등급 분석
     st.subheader("1. 예상 등급 분석 및 근거")
-    st.info(grade_txt)
+    st.write(grade_txt)
     st.divider()
 
     # 2. 영역별 역량 (막대 그래프)
@@ -403,8 +493,8 @@ def show_report_dashboard(df_results, student_name):
         fig_bar.update_traces(texttemplate='%{text:.0f}점', textposition='outside')
         st.plotly_chart(fig_bar, use_container_width=True)
     with c_g2:
-        st.markdown("**[전문가 총평]**")
-        st.write(ov_txt)
+        st.markdown("**[전문가 분석]**")
+        st.write(domain_txt)
     st.divider()
 
     # 3. 메타인지 분석
@@ -418,16 +508,17 @@ def show_report_dashboard(df_results, student_name):
         fig_pie = px.pie(names=quad_counts.index, values=quad_counts.values, hole=0.4, color=quad_counts.index, color_discrete_map=colors)
         st.plotly_chart(fig_pie, use_container_width=True)
     with c_m2:
-        st.markdown("**[전문가 진단]**")
+        st.markdown("**[전문가 분석]**")
         st.write(meta_txt)
     st.divider()
     
     # 4. 파트별 상세
     st.subheader("4. 파트별 정밀 분석")
     for p in range(1, 9):
-        with st.expander(f"{EXAM_STRUCTURE[p]['title']}", expanded=False):
-            st.write(det_dict[p])
-    st.divider()
+        # 텍스트로 풀어쓰기
+        st.markdown(f"### {EXAM_STRUCTURE[p]['title']}")
+        st.write(det_dict[p])
+        st.markdown("---")
     
     # 5. 총평
     st.subheader("5. 종합 평가 및 솔루션")
@@ -526,25 +617,9 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                 else: st.radio("정답", ["1","2","3","4","5"], horizontal=True, key=f"p4_q{i}")
                 st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p4_c{i}"); st.markdown("---")
         elif info['type'] == 'part5_special':
-            # 문항 1, 2 (복합)
-            for i in [1,2]: 
-                st.markdown(f"**문항 {i}**")
-                st.radio("(1)", ["1","2","3","4","5"], horizontal=True, key=f"p5_q{i}_obj")
-                st.text_input("(2)", key=f"p5_q{i}_text")
-                st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p5_c{i}")
-                st.markdown("---")
-            # 문항 3, 4 (단독)
-            for i in [3,4]: 
-                st.markdown(f"**문항 {i}**")
-                st.text_input("정답", key=f"p5_q{i}_text")
-                st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p5_c{i}")
-                st.markdown("---")
-            # 문항 5 (복합) - 오름차순 배치 완료
-            st.markdown("**문항 5**")
-            st.radio("(1)", ["1","2","3","4","5"], horizontal=True, key=f"p5_q5_obj")
-            st.text_input("(2)", key=f"p5_q5_text")
-            st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p5_c5")
-            st.markdown("---")
+            for i in [1,2]: st.markdown(f"**문항 {i}**"); st.radio("(1)", ["1","2","3","4","5"], horizontal=True, key=f"p5_q{i}_obj"); st.text_input("(2)", key=f"p5_q{i}_text"); st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p5_c{i}"); st.markdown("---")
+            for i in [3,4]: st.markdown(f"**문항 {i}**"); st.text_input("정답", key=f"p5_q{i}_text"); st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p5_c{i}"); st.markdown("---")
+            st.markdown("**문항 5**"); st.radio("(1)", ["1","2","3","4","5"], horizontal=True, key=f"p5_q5_obj"); st.text_input("(2)", key=f"p5_q5_text"); st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p5_c5"); st.markdown("---")
         elif info['type'] == 'part6_sets':
             qg=1
             for s in range(1,4):
@@ -557,7 +632,6 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
             for i in range(1,6): st.markdown(f"**문항 {i}**"); st.text_area("답안", key=f"p8_q{i}"); st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p8_c{i}"); st.markdown("---")
 
         if st.form_submit_button("제출 및 저장"):
-            # 데이터 수집 (생략 없이)
             final_data = []
             is_valid = True
             
@@ -575,23 +649,18 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                 if not w or not o: is_valid = False
                 final_data.append({'q_id':'10_wrong','ans':w,'conf':c}); final_data.append({'q_id':'10_correct','ans':o,'conf':c})
             elif info['type'] == 'part3_special':
-                # Q1
                 s1=st.session_state.get("p3_q1_subj",""); v1=st.session_state.get("p3_q1_verb",""); o1=st.session_state.get("p3_q1_obj",""); c1=st.session_state.get("p3_c1","모름")
                 if not(s1 and v1 and o1): is_valid=False
                 final_data.extend([{'q_id':'1_subj','ans':s1,'conf':c1},{'q_id':'1_verb','ans':v1,'conf':c1},{'q_id':'1_obj','ans':o1,'conf':c1}])
-                # Q2
                 s2=st.session_state.get("p3_q2_subj",""); v2=st.session_state.get("p3_q2_verb",""); o2=st.session_state.get("p3_q2_obj",""); c2=st.session_state.get("p3_c2","모름")
                 if not(s2 and v2 and o2): is_valid=False
                 final_data.extend([{'q_id':'2_subj','ans':s2,'conf':c2},{'q_id':'2_verb','ans':v2,'conf':c2},{'q_id':'2_obj','ans':o2,'conf':c2}])
-                # Q3
                 s3=st.session_state.get("p3_q3_subj",""); o3=st.session_state.get("p3_q3_obj",""); c3=st.session_state.get("p3_c3","모름")
                 if not(s3 and o3): is_valid=False
                 final_data.extend([{'q_id':'3_subj','ans':s3,'conf':c3},{'q_id':'3_obj','ans':o3,'conf':c3}])
-                # Q4
                 s4=st.session_state.get("p3_q4_subj",""); v4=st.session_state.get("p3_q4_verb",""); o4=st.session_state.get("p3_q4_obj",""); c4=st.session_state.get("p3_c4","모름")
                 if not(s4 and v4 and o4): is_valid=False
                 final_data.extend([{'q_id':'4_subj','ans':s4,'conf':c4},{'q_id':'4_verb','ans':v4,'conf':c4},{'q_id':'4_obj','ans':o4,'conf':c4}])
-                # Q5
                 o5=st.session_state.get("p3_q5_obj",""); t5=st.session_state.get("p3_q5_text",""); c5=st.session_state.get("p3_c5","모름")
                 if not(o5 and t5): is_valid=False
                 final_data.extend([{'q_id':'5_obj','ans':o5,'conf':c5},{'q_id':'5_text','ans':t5,'conf':c5}])
@@ -601,12 +670,10 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                     if not a: is_valid=False
                     final_data.append({'q_id':str(i),'ans':a,'conf':c})
             elif info['type'] == 'part5_special':
-                # 1,2,5 복합
                 for i in [1,2,5]:
                     ao=st.session_state.get(f"p5_q{i if i!=5 else 5}_obj",""); at=st.session_state.get(f"p5_q{i if i!=5 else 5}_text",""); c=st.session_state.get(f"p5_c{i if i!=5 else 5}","모름")
                     if not(ao and at): is_valid=False
                     final_data.append({'q_id':f"{i}_obj",'ans':ao,'conf':c}); final_data.append({'q_id':f"{i}_text",'ans':at,'conf':c})
-                # 3,4 단독
                 for i in [3,4]:
                     at=st.session_state.get(f"p5_q{i}_text",""); c=st.session_state.get(f"p5_c{i}","모름")
                     if not at: is_valid=False
