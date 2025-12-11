@@ -7,20 +7,19 @@ import plotly.express as px
 import time
 
 # ==========================================
-# [설정] 파트별 문항 상세 구성
+# [설정] 파트별 문항 상세 구성 & 전문가 분석 가이드
 # ==========================================
 EXAM_STRUCTURE = {
-    1: {"title": "어휘력 (Vocabulary)", "type": "simple_obj", "count": 30},
-    2: {"title": "어법 지식 (Grammar)", "type": "part2_special", "count": 10}, 
-    3: {"title": "구문 해석력 (Syntax Decoding)", "type": "part3_special", "count": 5}, 
-    4: {"title": "문해력 (Literacy)", "type": "part4_special", "count": 5}, 
-    5: {"title": "문장 연계 (Logical Connectivity)", "type": "part5_special", "count": 5}, 
-    6: {"title": "지문 이해 (Macro-Reading)", "type": "part6_sets", "count": 3},
-    7: {"title": "문제 풀이 (Strategy)", "type": "simple_obj", "count": 4},
-    8: {"title": "서술형 영작 (Writing)", "type": "simple_subj", "count": 5}
+    1: {"title": "Part 1. 어휘력 (Vocabulary)", "type": "simple_obj", "count": 30, "level": "기초"},
+    2: {"title": "Part 2. 어법 지식 (Grammar)", "type": "part2_special", "count": 10, "level": "기초"}, 
+    3: {"title": "Part 3. 구문 해석력 (Syntax)", "type": "part3_special", "count": 5, "level": "중급"}, 
+    4: {"title": "Part 4. 문해력 (Literacy)", "type": "part4_special", "count": 5, "level": "중급"}, 
+    5: {"title": "Part 5. 문장 연계 (Connectivity)", "type": "part5_special", "count": 5, "level": "상급"}, 
+    6: {"title": "Part 6. 지문 이해 (Macro-Reading)", "type": "part6_sets", "count": 3, "level": "상급"},
+    7: {"title": "Part 7. 문제 풀이 (Strategy)", "type": "simple_obj", "count": 4, "level": "최상급"},
+    8: {"title": "Part 8. 서술형 영작 (Writing)", "type": "simple_subj", "count": 5, "level": "최상급"}
 }
 
-# 메타인지 매트릭스 정의 (이미지 기반)
 QUADRANT_LABELS = {
     "Master": "실력자 (The Ace)",
     "Lucky": "불안한 잠재력 (Anxious Potential)",
@@ -29,7 +28,7 @@ QUADRANT_LABELS = {
 }
 
 # ==========================================
-# 1. DB 및 채점 엔진 연결
+# 1. DB 연결 및 유틸리티
 # ==========================================
 def get_client():
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -57,26 +56,19 @@ def get_student(name, email):
         ws = sh.worksheet("students")
         data = ws.get_all_records()
         df = pd.DataFrame(data)
-        
-        name = name.strip()
-        email = email.strip().lower()
-        
         if 'email' in df.columns:
             df['email'] = df['email'].astype(str).str.strip().str.lower()
             df['name'] = df['name'].astype(str).str.strip()
-            student = df[(df['name'] == name) & (df['email'] == email)]
+            student = df[(df['name'] == name.strip()) & (df['email'] == email.strip().lower())]
             return student.iloc[0].to_dict() if not student.empty else None
-        else:
-            return None
+        return None
     except:
         return None
 
 def save_student(name, email, school, grade):
     sh = get_db_connection()
     ws = sh.worksheet("students")
-    name = name.strip()
     email = email.strip().lower()
-    
     try:
         cell = ws.find(email)
         ws.update_cell(cell.row, 2, name)
@@ -90,7 +82,6 @@ def save_answers_bulk(email, part, data_list):
     ws = sh.worksheet("answers")
     rows = [[email, part, d['q_id'], d['ans'], d['conf']] for d in data_list]
     ws.append_rows(rows)
-    
     ws_stu = sh.worksheet("students")
     try:
         cell = ws_stu.find(email)
@@ -106,19 +97,17 @@ def load_student_answers(email):
     if 'email' in df.columns:
         df['email'] = df['email'].astype(str).str.strip().str.lower()
         return df[df['email'] == str(email).strip().lower()]
-    else:
-        return pd.DataFrame()
+    return pd.DataFrame()
 
 # ==========================================
-# 2. 채점 및 분석 로직
+# 2. 입시 전문가형 분석 로직 (Deep Analysis)
 # ==========================================
 def calculate_results(email):
     student_ans_df = load_student_answers(email)
     key_df = load_answer_key()
     results = []
     
-    if student_ans_df.empty:
-        return pd.DataFrame()
+    if student_ans_df.empty: return pd.DataFrame()
 
     for _, row in student_ans_df.iterrows():
         part = str(row['part'])
@@ -127,7 +116,6 @@ def calculate_results(email):
         conf = row['confidence']
         
         key_row = key_df[(key_df['part'] == part) & (key_df['q_id'] == q_id)]
-        
         if key_row.empty: continue
             
         correct_ans = str(key_row.iloc[0]['answer']).strip()
@@ -135,128 +123,162 @@ def calculate_results(email):
         keywords = str(key_row.iloc[0]['keywords'])
         
         is_correct = False
-        
         if grading_type == 'exact':
-            if user_ans.replace(" ", "").lower() == correct_ans.replace(" ", "").lower():
-                is_correct = True
+            if user_ans.replace(" ", "").lower() == correct_ans.replace(" ", "").lower(): is_correct = True
         elif grading_type == 'strict':
-            if user_ans.strip() == correct_ans.strip():
-                is_correct = True
+            if user_ans.strip() == correct_ans.strip(): is_correct = True
         elif grading_type == 'ai_match':
             if keywords:
-                required_words = [k.strip() for k in keywords.split(',')]
-                match_count = sum(1 for w in required_words if w in user_ans)
-                if match_count >= len(required_words) * 0.7:
-                    is_correct = True
+                req_words = [k.strip() for k in keywords.split(',')]
+                match_cnt = sum(1 for w in req_words if w in user_ans)
+                if match_cnt >= len(req_words) * 0.7: is_correct = True
             else:
                 if len(user_ans) > 5: is_correct = True
         
         quadrant = ""
-        if is_correct:
-            quadrant = "Master" if conf == "확신" else "Lucky"
-        else:
-            quadrant = "Delusion" if conf == "확신" else "Deficiency"
+        if is_correct: quadrant = "Master" if conf == "확신" else "Lucky"
+        else: quadrant = "Delusion" if conf == "확신" else "Deficiency"
             
         results.append({'part': int(part), 'q_id': q_id, 'is_correct': is_correct, 'quadrant': quadrant})
         
     return pd.DataFrame(results)
 
-# ==========================================
-# 3. 자동 텍스트 생성기 (500자 이상 로직)
-# ==========================================
-def generate_verbose_analysis(df_results):
-    # 통계 계산
-    total_q = len(df_results)
-    correct_q = len(df_results[df_results['is_correct'] == True])
-    score = int((correct_q / total_q) * 100) if total_q > 0 else 0
-    
+def generate_expert_analysis(df_results, student_name):
+    # 파트별 점수 계산
+    part_scores = df_results.groupby('part')['is_correct'].mean() * 100
+    all_parts = pd.Series(0, index=range(1, 9))
+    part_scores = part_scores.combine_first(all_parts).sort_index()
+
+    # 메타인지 통계
     quad_counts = df_results['quadrant'].value_counts()
-    master_cnt = quad_counts.get("Master", 0)
-    delusion_cnt = quad_counts.get("Delusion", 0)
-    lucky_cnt = quad_counts.get("Lucky", 0)
-    deficiency_cnt = quad_counts.get("Deficiency", 0)
+    master_ratio = (quad_counts.get("Master", 0) / len(df_results)) * 100
+    delusion_ratio = (quad_counts.get("Delusion", 0) / len(df_results)) * 100
+    lucky_ratio = (quad_counts.get("Lucky", 0) / len(df_results)) * 100
     
-    # 1. 예상 등급 근거 (500자 이상)
-    grade_text = f"현재 학생의 종합 점수는 {score}점이며, 전체 문항 중 정답률은 {int((correct_q/total_q)*100)}%입니다. "
+    # ----------------------------------------------------
+    # 1. 예상 등급 및 근거 (난이도 위계 분석)
+    # ----------------------------------------------------
+    # 전략: P1,2(기초) -> P3,4(구문) -> P5,6(논리) -> P7,8(킬러) 순서로 무너진 지점을 찾음
     
-    if score >= 90:
-        grade_text += "이 점수는 안정적인 1등급 구간에 해당합니다. 특히 주목할 점은 '실력자(The Ace)' 유형의 비율이 높다는 점입니다. 이는 학생이 문제를 풀 때 단순히 감에 의존하는 것이 아니라, 명확한 근거와 논리를 바탕으로 정답을 도출해내고 있음을 시사합니다. "
-    elif score >= 80:
-        grade_text += "이 점수는 2등급 초반에서 1등급 턱걸이 구간에 해당합니다. 전반적인 이해도는 우수하나, 일부 고난도 유형에서 확신이 부족하거나 오개념이 발견됩니다. 1등급으로 확실히 도약하기 위해서는 '불안한 잠재력' 영역을 '실력자' 영역으로 전환하는 정밀 학습이 필요합니다. "
-    elif score >= 70:
-        grade_text += "이 점수는 3등급 상위권에서 2등급 하위권 구간으로 예측됩니다. 기본적인 어휘와 문법 지식은 갖추고 있으나, 복합적인 사고를 요하는 문항에서 오답률이 높습니다. 특히 틀린 문제 중 상당수가 '위험한 착각'에 해당한다면, 이는 잘못된 지식이 고착화되어 있음을 의미하므로 시급한 교정이 필요합니다. "
+    score_p12 = part_scores[1:3].mean()
+    score_p34 = part_scores[3:5].mean()
+    score_p56 = part_scores[5:7].mean()
+    score_p78 = part_scores[7:9].mean()
+    
+    predicted_grade = ""
+    grade_analysis = ""
+
+    if score_p12 < 70:
+        predicted_grade = "5등급 이하 (기초 재건 필요)"
+        grade_analysis = f"냉정하게 평가할 때, {student_name} 학생은 영어의 기초 체력인 '어휘'와 '어법' 파트(Part 1~2)에서부터 흔들리고 있습니다. 이는 상위권 도약을 논하기 이전에, 중등 수준의 기초가 완성되지 않았음을 의미합니다. 특히 Part 1, 2가 무너진 상태에서는 Part 6, 7의 독해 점수가 높게 나오더라도 이는 '감'에 의존한 일시적 성과일 확률이 높습니다."
+    elif score_p34 < 70:
+        predicted_grade = "4등급 (구문 독해력 부족)"
+        grade_analysis = f"어휘는 어느 정도 갖추었으나, 문장을 구조적으로 파악하는 '구문 해석력(Part 3~4)'에서 한계를 보입니다. 단어만 연결해서 해석하는 '감독해' 습관이 고착화되어 있을 가능성이 큽니다. 이 경우, 고1 수준의 문장은 해석하지만, 문장이 조금만 길어지거나 도치/생략 구문이 나오면 오독하게 되어 3등급의 벽을 넘기 어렵습니다."
+    elif score_p56 < 70:
+        predicted_grade = "3등급 (논리력 부재)"
+        grade_analysis = f"문장 단위의 해석은 가능하지만, 문장과 문장 사이의 연결 고리를 파악하는 '논리적 독해력(Part 5~6)'이 부족합니다. 이는 글의 주제를 찾거나 빈칸을 추론할 때 결정적인 감점 요인이 됩니다. 2등급으로 올라서기 위해서는 단순 번역이 아니라, 필자의 의도와 글의 전개 방식을 파악하는 '거시적 독해 훈련'이 필수적입니다."
+    elif score_p78 < 70:
+        predicted_grade = "2등급 (킬러 문항 취약)"
+        grade_analysis = f"전반적으로 우수한 실력을 갖추고 있으나, 변별력을 가르는 '고난도 문제 해결(Part 7)'과 '정밀 영작(Part 8)'에서 약점을 보입니다. 이는 1등급을 결정짓는 최후의 관문입니다. 특히 Part 8 서술형에서의 감점은 문법적 디테일 부족에서 기인하며, 이는 내신 1등급 방어에 치명적일 수 있습니다."
     else:
-        grade_text += "현재 점수대는 4등급 이하 구간으로, 영어 기초 체력 강화가 절실한 단계입니다. 단순 암기보다는 문장의 구조를 보는 눈을 기르고, '백지 상태'인 영역을 차근차근 채워나가는 학습 전략이 필요합니다. "
+        predicted_grade = "1등급 (최상위권)"
+        grade_analysis = f"기초부터 심화까지 전 영역에서 빈틈없는 실력을 보여주고 있습니다. 특히 킬러 파트인 Part 7, 8까지 완벽하게 소화해낸 점은 단순한 영어 실력을 넘어 논리적 사고력과 꼼꼼함까지 겸비했음을 증명합니다."
 
-    grade_text += f"\n\n상세 분석 결과, 학생은 전체 문항 중 {delusion_cnt}개 문항에서 '위험한 착각(Delusion)' 반응을 보였습니다. 이는 틀렸음에도 불구하고 정답이라고 확신한 경우로, 시험장에서 등급을 떨어뜨리는 가장 치명적인 요인입니다. 반면 {lucky_cnt}개 문항은 '불안한 잠재력(Lucky)'으로 분류되었습니다. 이는 정답은 맞혔으나 확신이 없는 상태로, 컨디션에 따라 언제든 오답으로 바뀔 수 있는 불안 요소입니다. 따라서 예상 등급을 단순히 점수로만 판단하기보다, 이러한 메타인지 데이터를 종합적으로 고려했을 때 {score}점이라는 점수는 학생의 실제 영어 실력을 나타내는 지표이자 앞으로의 학습 방향성을 제시하는 나침반이 될 것입니다."
-    grade_text += "\n\n결론적으로, 현재 등급을 유지하거나 상승시키기 위해서는 자신이 '안다고 착각하는 것'과 '실제로 아는 것'을 철저히 구분하는 메타인지 훈련이 선행되어야 하며, 이를 통해 실수를 줄이고 정답의 근거를 명확히 하는 연습을 지속해야 합니다."
+    # 메타인지 데이터를 근거에 추가
+    grade_analysis += f"\n\n또한 메타인지 분석 결과, '위험한 착각(Delusion)' 비율이 {delusion_ratio:.1f}%로 나타났습니다. "
+    if delusion_ratio > 20:
+        grade_analysis += "이는 학생이 틀렸음에도 맞았다고 확신하는 비율이 매우 높다는 뜻으로, 시험장에서 예상 점수보다 실제 점수가 대폭 하락할 수 있는 '거품'이 끼어 있음을 시사합니다. 이 오개념을 걷어내지 않으면 등급 상승은 요원합니다."
+    elif lucky_ratio > 30:
+        grade_analysis += "이는 자신의 실력보다 운에 의존하여 정답을 맞힌 비율(불안한 잠재력)이 높다는 뜻입니다. 현재 점수는 학생의 진짜 실력이 아닐 수 있으며, 난이도가 조금만 높아져도 점수가 급락할 위험이 있습니다."
+    else:
+        grade_analysis += "자신이 아는 것과 모르는 것을 명확히 구분하는 메타인지 능력이 양호하여, 학습 효율이 매우 높을 것으로 기대됩니다."
 
-    # 2. 파트별 분석 (각 파트별 상세 텍스트)
-    part_analysis_text = ""
-    for p in range(1, 9):
-        p_df = df_results[df_results['part'] == p]
-        if p_df.empty: continue
+    # ----------------------------------------------------
+    # 2. 영역별 역량 분석 텍스트 (300자 이상)
+    # ----------------------------------------------------
+    # 가장 약한 파트 찾기
+    weakest_part = part_scores.idxmin()
+    weakest_score = part_scores.min()
+    
+    area_text = f"학생의 8개 영역 성취도를 분석한 결과, 가장 시급한 보완이 필요한 영역은 **[{EXAM_STRUCTURE[weakest_part]['title']}]**입니다. 현재 이 파트의 점수는 {int(weakest_score)}점으로, 다른 영역에 비해 현저히 낮습니다.\n\n"
+    
+    if weakest_part in [1, 2]:
+        area_text += "어휘와 어법은 영어 학습의 뿌리입니다. 뿌리가 약하면 구문 독해(Part 3,4)나 논리 독해(Part 5,6)로 나아갈 수 없습니다. 현재 학생은 고등 영어를 받아들일 기초 체력이 부족하므로, 당분간 문제 풀이보다는 단어 암기와 문법 개념 정리에 학습 시간의 80%를 할애해야 합니다."
+    elif weakest_part in [3, 4]:
+        area_text += "구문 해석력이 약하다는 것은 '정확한 독해'가 안 된다는 뜻입니다. 대충 아는 단어들을 조합해 소설을 쓰는 식의 독해를 하고 있을 가능성이 높습니다. 주어와 동사를 정확히 찾고, 수식 구조를 괄호 묶는 훈련(Chunking)을 집중적으로 수행해야 합니다. 이것이 해결되지 않으면 고학년이 될수록 점수 정체기에 빠지게 됩니다."
+    elif weakest_part in [5, 6]:
+        area_text += "문맥 파악과 논리적 연결성이 부족합니다. 해석은 했는데 '그래서 무슨 말이지?'라고 되묻는 경우가 많을 것입니다. 글의 소재(Keyword), 태도(Tone), 전개 구조(Flow)를 분석하는 훈련을 통해 글을 입체적으로 읽는 눈을 길러야 합니다."
+    elif weakest_part in [7, 8]:
+        area_text += "최상위권 도약을 위한 마지막 퍼즐이 빠져 있습니다. 특히 서술형 영작(Part 8)에서의 감점은 내신 등급 결정에 치명적입니다. 문법 지식을 단순히 아는 것(Input)을 넘어, 조건에 맞춰 정확하게 문장을 구성해내는(Output) 훈련이 필요합니다. 사소한 수일치, 태, 시제 실수를 잡는 정밀 클리닉이 요구됩니다."
+
+    area_text += f"\n\n반면, **[{EXAM_STRUCTURE[part_scores.idxmax()]['title']}]** 영역에서는 {int(part_scores.max())}점의 우수한 성취도를 보였습니다. 강점 영역을 유지하되, 취약 영역인 Part {weakest_part}와의 불균형을 해소하는 것이 전체 등급 상승의 열쇠가 될 것입니다."
+
+    # ----------------------------------------------------
+    # 3. 메타인지 분석 텍스트 (300자 이상)
+    # ----------------------------------------------------
+    meta_text = f"단순 정답률보다 더 중요한 것이 '확신도(Confidence)'입니다. {student_name} 학생의 응답 데이터를 4분면으로 분석했을 때, 전문가로서 주목하는 지점은 다음과 같습니다.\n\n"
+    
+    meta_text += f"첫째, **'위험한 착각(Critical Delusion)' 비율이 {delusion_ratio:.1f}%**입니다. "
+    if delusion_ratio > 15:
+        meta_text += "이 수치가 높다는 것은 '잘못된 지식의 고착화'를 의미합니다. 학생은 틀린 문법이나 독해 습관을 옳다고 믿고 있어, 일반적인 강의 수강만으로는 교정이 어렵습니다. 반드시 1:1 클리닉을 통해 왜 그렇게 생각했는지 사고 과정을 역추적하여 오개념을 깨뜨려야 합니다. "
+    else:
+        meta_text += "이는 비교적 양호한 수준으로, 학생이 자신의 부족함을 솔직하게 인정하고 있음을 보여줍니다. 이러한 태도는 학습 흡수력을 높여줍니다. "
         
-        p_score = int(p_df['is_correct'].mean() * 100)
-        p_quads = p_df['quadrant'].value_counts()
-        dom_quad = p_quads.idxmax() if not p_quads.empty else "None"
+    meta_text += f"\n\n둘째, **'불안한 잠재력(Anxious Potential)' 비율이 {lucky_ratio:.1f}%**입니다. "
+    if lucky_ratio > 20:
+        meta_text += "맞힌 문제 중 상당수가 '찍어서' 혹은 '감으로' 맞힌 것입니다. 시험 운이 좋았을 뿐, 이것을 실력으로 착각해서는 안 됩니다. 이 영역은 조금만 훈련하면 '실력자(The Ace)' 영역으로 가장 빠르게 전환될 수 있는 '기회의 땅'입니다. 해당 문항들에 대해 확신을 가질 수 있도록 개념 강화 학습이 필요합니다."
+    else:
+        meta_text += "학생은 자신이 아는 내용에 대해서는 확신을 가지고 정답을 골랐습니다. 이는 학습 내용이 내면화가 잘 되어 있음을 방증합니다."
         
-        title = EXAM_STRUCTURE[p]['title']
-        part_analysis_text += f"\n\n**[{title} - {p_score}점]**\n"
-        part_analysis_text += f"이 영역에서 학생은 {p_score}점의 성취도를 보였습니다. "
-        
-        if dom_quad == "Master":
-            part_analysis_text += "가장 두드러진 특징은 '실력자(The Ace)' 유형의 응답이 많다는 것입니다. 이는 해당 파트의 핵심 개념을 정확히 이해하고 있으며, 실전에서도 흔들림 없이 정답을 골라낼 수 있는 탄탄한 실력을 갖추고 있음을 의미합니다. 현재의 학습 방식을 유지하되, 고난도 킬러 문항 대비를 병행한다면 완벽한 만점을 기대할 수 있습니다. "
-        elif dom_quad == "Lucky":
-            part_analysis_text += "주목할 점은 정답을 맞힌 문항 중 다수가 '불안한 잠재력(Anxious Potential)'에 해당한다는 것입니다. 이는 '감'으로 문제를 풀고 있거나, 개념을 어렴풋이만 알고 있는 상태입니다. 운 좋게 점수는 나왔을지 모르나, 이는 모래 위에 쌓은 성과 같습니다. 정확한 구문 분석과 어휘 학습을 통해 근거를 찾는 훈련이 시급합니다. "
-        elif dom_quad == "Delusion":
-            part_analysis_text += "가장 우려되는 점은 '위험한 착각(Critical Delusion)' 유형의 비율이 높다는 것입니다. 학생은 자신이 개념을 잘 알고 있다고 생각하지만, 실제로는 오개념을 가지고 있거나 출제자의 함정에 쉽게 빠지는 경향이 있습니다. 이는 혼자서 공부할 때 교정하기 가장 어려운 유형이므로, 전문가의 피드백을 통해 잘못된 개념을 뿌리 뽑아야 합니다. "
-        elif dom_quad == "Deficiency":
-            part_analysis_text += "이 파트는 '백지 상태(Blank Slate)'로 분류되는 문항이 많습니다. 즉, 해당 영역에 대한 기초 학습이 전반적으로 부족한 상태입니다. 무리하게 문제 풀이 양을 늘리기보다는, 기본 개념서로 돌아가 용어 정의와 원리를 차근차근 학습하는 것이 점수 향상의 지름길입니다. "
-            
-        part_analysis_text += "세부적으로 살펴보면, 학생은 이 파트에서 요구하는 논리적 사고력과 응용력 부분에서 강점/약점을 보이고 있습니다. (이 부분은 문항별 세부 분석을 통해 더 구체화될 수 있습니다). 특히 이 영역은 수능 및 내신 등급을 가르는 핵심 파트이므로, 위에서 분석한 메타인지 유형에 맞춰 학습 우선순위를 재조정해야 합니다. 단순히 많이 푸는 것보다 '왜 틀렸는지', '왜 맞았는지'를 스스로 설명할 수 있을 때까지 집요하게 파고드는 학습 태도가 필요합니다."
+    meta_text += "\n\n결론적으로, 점수 뒤에 숨겨진 이 메타인지 패턴을 이해해야 합니다. 모르는 건 죄가 아니지만, '안다고 착각하는 것'은 입시에서 가장 큰 적입니다. 이번 진단은 이 '착각'을 수치화하여 보여주었다는 점에서 큰 의미가 있습니다."
 
-    # 3. 총평 (500자 이상)
-    total_review = f"종합적으로 {st.session_state['user_name']} 학생의 진단 결과를 분석해보면, 영어 학습에 대한 잠재력은 충분하나 이를 점수로 연결시키는 '정확성'과 '확신'의 균형이 필요한 시점입니다. 총점 {score}점은 단순한 숫자가 아니라, 학생이 그동안 쌓아온 학습의 결과물인 동시에 앞으로 채워나가야 할 학습의 공백을 보여주는 지도입니다.\n\n"
-    total_review += f"가장 긍정적인 신호는 전체 문항 중 {master_cnt}개 문항에서 보여준 '실력자'로서의 면모입니다. 이는 학생이 올바른 방향으로 학습했을 때 충분히 성과를 낼 수 있다는 증거입니다. 하지만 경계해야 할 점은 {lucky_cnt}개의 '불안한 잠재력'과 {delusion_cnt}개의 '위험한 착각'입니다. 이 두 영역은 시험 난이도가 조금만 올라가도 바로 등급 하락으로 이어질 수 있는 '시한폭탄'과 같습니다. 따라서 향후 학습 계획은 단순히 진도를 나가는 것이 아니라, 이 '불안한 영역'을 '확실한 영역'으로 바꾸는 데 모든 초점을 맞춰야 합니다.\n\n"
-    total_review += "구체적인 솔루션으로는 첫째, '위험한 착각'이 많이 나온 파트를 최우선 순위로 복습해야 합니다. 오답 노트를 작성할 때 단순히 정답만 적는 것이 아니라, 내가 왜 그렇게 생각했는지 사고 과정을 적고 선생님의 교정을 받아야 합니다. 둘째, '불안한 잠재력' 영역은 백지 복습법을 추천합니다. 책을 보지 않고 해당 개념을 설명할 수 있는지 스스로 테스트해보며 메타인지를 높여야 합니다. 셋째, 서술형 문항에서의 감점 요인을 최소화하기 위해 평소 문장 성분을 꼼꼼히 분석하고 영작하는 습관을 들여야 합니다.\n\n"
-    total_review += "결론적으로, 이번 진단고사는 학생의 현재 위치를 객관적으로 파악하고, 무의미한 학습 노동을 줄여주는 계기가 될 것입니다. 분석된 데이터를 바탕으로 약점은 보완하고 강점은 극대화하는 스마트한 학습 전략을 실천한다면, 목표하는 등급 달성은 시간문제일 것입니다."
-
-    return grade_text, part_analysis_text, total_review
+    return predicted_grade, grade_analysis, area_text, meta_text
 
 # ==========================================
 # 4. 리포트 UI 컴포넌트
 # ==========================================
 def show_report_dashboard(df_results, student_name):
-    st.markdown(f"## 📊 {student_name}님의 진단 분석 리포트")
+    # PDF 저장을 위한 JS 스크립트 (화면 인쇄 기능 호출)
+    st.markdown("""
+    <script>
+    function printPage() {
+        window.print();
+    }
+    </script>
+    """, unsafe_allow_html=True)
+
+    st.markdown(f"## 📊 {student_name}님의 영어 역량 정밀 진단 리포트")
+    
     if df_results.empty:
         st.warning("분석할 데이터가 없습니다.")
         return
 
-    # 텍스트 생성
-    grade_txt, part_txt, total_txt = generate_verbose_analysis(df_results)
-
+    pred_grade, grade_txt, area_txt, meta_txt = generate_expert_analysis(df_results, student_name)
+    
     total_q = len(df_results)
     correct_q = len(df_results[df_results['is_correct'] == True])
     score = int((correct_q / total_q) * 100) if total_q > 0 else 0
     
-    # 1. 상단 요약
-    c1, c2, c3 = st.columns(3)
-    c1.metric("총점", f"{score}점")
-    c2.metric("정답 수", f"{correct_q} / {total_q}")
-    pred_grade = "1등급" if score >= 90 else "2~3등급" if score >= 70 else "4등급 이하"
-    c3.metric("예상 등급", pred_grade)
-    
+    # 1. 요약 카드
+    col1, col2, col3, col4 = st.columns([2, 2, 3, 2])
+    col1.metric("종합 점수", f"{score}점")
+    col2.metric("정답 수", f"{correct_q} / {total_q}")
+    col3.metric("예상 등급", pred_grade.split('(')[0])
+    with col4:
+        # PDF 저장 버튼 (브라우저 인쇄 트리거)
+        st.button("🖨️ PDF로 저장", on_click=None, help="버튼을 누른 후 '대상'을 'PDF로 저장'으로 변경하세요.", type="primary", args=None, kwargs=None, key="print_btn")
+        if st.session_state.get("print_btn"):
+            st.components.v1.html("<script>window.print();</script>", height=0, width=0)
+
     st.divider()
     
-    # 2. 등급 예측 근거
+    # 2. 등급 분석 및 근거
     st.subheader("1. 예상 등급 분석 및 근거")
     st.info(grade_txt)
-    
     st.divider()
 
-    # 3. 그래프 (Radar + Pie)
-    c_graph1, c_graph2 = st.columns(2)
+    # 3. 영역별 역량 분석 (막대 그래프)
+    c_graph1, c_graph2 = st.columns([1, 1])
     
     with c_graph1:
         st.subheader("2. 영역별 역량 분석")
@@ -264,23 +286,35 @@ def show_report_dashboard(df_results, student_name):
         all_parts = pd.Series(0, index=range(1, 9))
         part_stats = part_stats.combine_first(all_parts).sort_index()
         
-        df_radar = pd.DataFrame({
-            'Part': [EXAM_STRUCTURE[p]['title'].split('(')[0] for p in range(1,9)],
-            'Score': part_stats.values
+        # 막대 그래프 데이터 생성
+        df_bar = pd.DataFrame({
+            '영역': [EXAM_STRUCTURE[p]['title'].split('.')[1].strip() for p in range(1,9)],
+            '점수': part_stats.values,
+            'Color': part_stats.values
         })
-        fig = px.line_polar(df_radar, r='Score', theta='Part', line_close=True)
-        fig.update_traces(fill='toself')
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption("▲ 위 그래프는 8개 영역에 대한 학생의 성취도를 시각화한 것입니다. 도형이 넓고 균형 잡힐수록 안정적인 실력을 의미합니다.")
+        
+        fig_bar = px.bar(df_bar, x='영역', y='점수', text='점수', color='점수', 
+                         color_continuous_scale='Blues', range_y=[0, 100])
+        fig_bar.update_traces(texttemplate='%{text:.0f}점', textposition='outside')
+        fig_bar.update_layout(xaxis_tickangle=-45, showlegend=False)
+        st.plotly_chart(fig_bar, use_container_width=True)
         
     with c_graph2:
+        st.markdown("**[전문가 진단]**")
+        st.write(area_txt)
+
+    st.divider()
+
+    # 4. 메타인지 분석
+    c_meta1, c_meta2 = st.columns([1, 1])
+    
+    with c_meta1:
         st.subheader("3. 메타인지(확신도) 분석")
         
         # 내부 용어를 한국어 라벨로 매핑
         df_results['quadrant_label'] = df_results['quadrant'].map(QUADRANT_LABELS)
         quad_counts = df_results['quadrant_label'].value_counts()
         
-        # 색상 설정
         colors = {
             QUADRANT_LABELS["Master"]: '#28a745',     # 녹색
             QUADRANT_LABELS["Lucky"]: '#ffc107',      # 노랑
@@ -288,30 +322,22 @@ def show_report_dashboard(df_results, student_name):
             QUADRANT_LABELS["Deficiency"]: '#6c757d'  # 회색
         }
         
-        fig2 = px.pie(names=quad_counts.index, values=quad_counts.values, hole=0.5, 
-                     color=quad_counts.index, color_discrete_map=colors)
-        st.plotly_chart(fig2, use_container_width=True)
-        st.caption("▲ 위 그래프는 정답 여부와 학생의 확신도를 교차 분석한 결과입니다. '실력자' 비율을 높이고 '위험한 착각'을 줄이는 것이 핵심입니다.")
+        fig_pie = px.pie(names=quad_counts.index, values=quad_counts.values, hole=0.4, 
+                         color=quad_counts.index, color_discrete_map=colors)
+        fig_pie.update_traces(textinfo='percent+label')
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+    with c_meta2:
+        st.markdown("**[전문가 진단]**")
+        st.write(meta_txt)
 
     st.markdown("""
-    > **그래프 해석 가이드**
-    > * **실력자 (The Ace):** 정답을 맞혔고 확신도 있는 상태. 안정적인 1등급 자산입니다.
-    > * **불안한 잠재력 (Anxious Potential):** 맞혔지만 확신이 부족함. 실수할 가능성이 높습니다.
-    > * **위험한 착각 (Critical Delusion):** 틀렸는데 맞았다고 착각함. 가장 시급한 교정 대상입니다.
-    > * **백지 상태 (Blank Slate):** 모르고 틀림. 기초부터 학습이 필요합니다.
+    > **※ 메타인지 그래프 해석**
+    > * **실력자:** 정답+확신 (안정적 득점원)
+    > * **불안한 잠재력:** 정답+비확신 (실수로 이어질 가능성)
+    > * **위험한 착각:** 오답+확신 (교정이 가장 시급한 고집 센 오답)
+    > * **백지 상태:** 오답+비확신 (기초 학습 필요)
     """)
-
-    st.divider()
-
-    # 4. 파트별 상세 분석
-    st.subheader("4. 파트별 정밀 분석")
-    st.write(part_txt)
-    
-    st.divider()
-    
-    # 5. 총평
-    st.subheader("5. 종합 평가 및 솔루션")
-    st.success(total_txt)
 
 # ==========================================
 # 5. 메인 앱 실행
@@ -328,6 +354,11 @@ div.row-widget.stRadio > div > label:hover {background-color: #e9ecef;}
 textarea {font-size: 16px !important; line-height: 1.5 !important;}
 input[type="text"] {font-size: 16px !important;}
 .stAlert {font-weight: bold;}
+/* 인쇄 시 버튼 숨기기 */
+@media print {
+    button { display: none !important; }
+    .stApp { margin: 0; padding: 0; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -337,7 +368,7 @@ if 'current_part' not in st.session_state: st.session_state['current_part'] = 1
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = False
 
 # ---------------------------------------------------------
-# 화면 1: 로그인 (이메일 입력)
+# 화면 1: 로그인
 # ---------------------------------------------------------
 if st.session_state['user_email'] is None:
     st.title("🎓 영어 역량 정밀 진단고사")
@@ -350,14 +381,12 @@ if st.session_state['user_email'] is None:
             name = st.text_input("이름")
             email = st.text_input("이메일 주소")
             
-            # [수정 사항 1] 학교 직접 입력 로직
-            school_opt = st.radio("학교", ["신원고등학교", "동산고등학교", "직접 입력"])
-            # form 안에서 동적 UI 변경이 제한적이므로, 아래와 같이 처리하거나 
-            # form 밖으로 빼야 하지만, 여기서는 조건부 렌더링을 위해 form submit 후 처리보다
-            # st.text_input을 항상 보여주되 '직접 입력'일 때만 유효하게 하는 방식이 form 안에서는 안전함.
-            # 하지만 Streamlit form 특성상 즉시 반응이 안되므로, 
-            # 직관성을 위해 '직접 입력 시 아래 칸에 학교명을 적어주세요'라고 안내하는 것이 좋음.
-            custom_school = st.text_input("학교명 (위에서 '직접 입력' 선택 시 작성)")
+            # [수정] 학교 직접 입력 로직
+            col_s1, col_s2 = st.columns([1, 1])
+            with col_s1:
+                school_opt = st.radio("학교 선택", ["신원고등학교", "동산고등학교", "직접 입력"])
+            with col_s2:
+                custom_school = st.text_input("학교명 (직접 입력 시 작성)")
             
             grade = st.selectbox("학년 (2026년 기준)", ["중3", "고1", "고2", "고3"])
             
@@ -410,22 +439,20 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
     part = st.session_state['current_part']
     info = EXAM_STRUCTURE[part]
     
-    st.title(f"Part {part}. {info['title']}")
+    st.title(f"{info['title']}")
     st.progress(part / 8)
     
-    # [수정 사항 4] Part 8 상단 주의사항
+    # [수정] Part 8 상단 주의사항 강조
     if part == 8:
         st.error("""
         **[⚠️ 서술형 답안 작성 주의사항]**
         1. 문장의 끝에는 **반드시 마침표(.)**를 찍어야 합니다.
-        2. **띄어쓰기**나 줄바꿈 실수는 오답 처리됩니다.
+        2. **띄어쓰기**나 줄바꿈 실수는 오답 처리됩니다. (엔터키 주의)
         3. 조건에 맞지 않는 답안은 0점 처리됩니다.
         """)
 
     with st.form(f"exam_form_{part}"):
-        # ------------------------------------
-        # TYPE 1: 단순 객관식 (Part 1, 7)
-        # ------------------------------------
+        # TYPE 1: 단순 객관식
         if info['type'] == 'simple_obj':
             st.info(f"총 {info['count']}문항입니다.")
             for i in range(1, info['count'] + 1):
@@ -435,9 +462,7 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                 with c2: st.radio(f"확신도", ["확신", "애매", "모름"], horizontal=False, key=f"p{part}_c{i}", label_visibility="collapsed")
                 st.markdown("---")
 
-        # ------------------------------------
         # TYPE 2: Part 2
-        # ------------------------------------
         elif info['type'] == 'part2_special':
             for i in range(1, 10):
                 st.markdown(f"**문항 {i}**")
@@ -451,9 +476,7 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
             with c2: st.text_input("고친 단어", key="p2_q10_correct")
             with c3: st.radio("확신도", ["확신", "애매", "모름"], key="p2_c10")
 
-        # ------------------------------------
         # TYPE 3: Part 3
-        # ------------------------------------
         elif info['type'] == 'part3_special':
             st.markdown("**문항 1**")
             c1, c2 = st.columns(2)
@@ -487,9 +510,7 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
             st.radio("확신도", ["확신", "애매", "모름"], horizontal=True, key="p3_c5")
             st.markdown("---")
 
-        # ------------------------------------
         # TYPE 4: Part 4
-        # ------------------------------------
         elif info['type'] == 'part4_special':
             for i in range(1, 6):
                 st.markdown(f"**문항 {i}**")
@@ -498,25 +519,29 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                 st.radio("확신도", ["확신", "애매", "모름"], horizontal=True, key=f"p4_c{i}")
                 st.markdown("---")
 
-        # ------------------------------------
-        # TYPE 5: Part 5 (순서 정렬 수정됨)
-        # ------------------------------------
+        # TYPE 5: Part 5 (순서 정렬 수정: 1, 2, 3, 4, 5)
         elif info['type'] == 'part5_special':
-            # [수정 사항 2] 문항 순서를 1, 2, 3, 4, 5 순서로 배치
-            for i in range(1, 6):
+            # 1, 2번 (복합)
+            for i in [1, 2]:
                 st.markdown(f"**문항 {i}**")
-                if i in [1, 2, 5]: # 복합형
-                    st.radio("(1)", ["1","2","3","4","5"], horizontal=True, key=f"p5_q{i}_obj")
-                    st.text_input("(2)", key=f"p5_q{i}_text")
-                else: # 3, 4번 단독 서술형
-                    st.text_input("정답", key=f"p5_q{i}_text")
-                
+                st.radio("(1)", ["1","2","3","4","5"], horizontal=True, key=f"p5_q{i}_obj")
+                st.text_input("(2)", key=f"p5_q{i}_text")
                 st.radio("확신도", ["확신", "애매", "모름"], horizontal=True, key=f"p5_c{i}")
                 st.markdown("---")
+            # 3, 4번 (단독) - 순서대로 배치
+            for i in [3, 4]:
+                st.markdown(f"**문항 {i}**")
+                st.text_input("정답", key=f"p5_q{i}_text")
+                st.radio("확신도", ["확신", "애매", "모름"], horizontal=True, key=f"p5_c{i}")
+                st.markdown("---")
+            # 5번 (복합)
+            st.markdown(f"**문항 5**")
+            st.radio("(1)", ["1","2","3","4","5"], horizontal=True, key=f"p5_q5_obj")
+            st.text_input("(2)", key=f"p5_q5_text")
+            st.radio("확신도", ["확신", "애매", "모름"], horizontal=True, key=f"p5_c5")
+            st.markdown("---")
 
-        # ------------------------------------
         # TYPE 6: Part 6
-        # ------------------------------------
         elif info['type'] == 'part6_sets':
             q_global = 1
             for s in range(1, 4):
@@ -528,9 +553,7 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                 st.radio(f"Set {s} 확신도", ["확신", "애매", "모름"], horizontal=True, key=f"p6_set{s}_conf")
                 st.markdown("---")
 
-        # ------------------------------------
         # TYPE 8: Part 8
-        # ------------------------------------
         elif info['type'] == 'simple_subj':
             for i in range(1, info['count']+1):
                 st.markdown(f"**문항 {i}**")
@@ -539,11 +562,11 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                 st.markdown("---")
 
         # ==========================================
-        # 제출 버튼 및 데이터 처리
+        # 제출 및 저장
         # ==========================================
         if st.form_submit_button(f"Part {part} 제출 및 저장"):
             final_data = []
-            is_valid = True # [수정 사항 3] 유효성 검사 플래그
+            is_valid = True
             
             # --- 데이터 수집 로직 ---
             if info['type'] in ['simple_obj', 'simple_subj']:
@@ -562,7 +585,6 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                 ans_w = st.session_state.get("p2_q10_wrong", "")
                 ans_c = st.session_state.get("p2_q10_correct", "")
                 if not ans_w or not ans_c: is_valid = False
-                
                 final_data.append({'q_id': '10_wrong', 'ans': ans_w, 'conf': st.session_state.get("p2_c10", "모름")})
                 final_data.append({'q_id': '10_correct', 'ans': ans_c, 'conf': st.session_state.get("p2_c10", "모름")})
 
@@ -603,40 +625,38 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                     final_data.append({'q_id': str(i), 'ans': ans, 'conf': st.session_state.get(f"p4_c{i}", "모름")})
 
             elif info['type'] == 'part5_special':
-                for i in range(1, 6):
-                    if i in [1, 2, 5]:
-                        ao = st.session_state.get(f"p5_q{i}_obj", "")
-                        at = st.session_state.get(f"p5_q{i}_text", "")
-                        if not (ao and at): is_valid = False
-                        final_data.append({'q_id': f"{i}_obj", 'ans': ao, 'conf': st.session_state.get(f"p5_c{i}", "모름")})
-                        final_data.append({'q_id': f"{i}_text", 'ans': at, 'conf': st.session_state.get(f"p5_c{i}", "모름")})
-                    else:
-                        at = st.session_state.get(f"p5_q{i}_text", "")
-                        if not at: is_valid = False
-                        final_data.append({'q_id': f"{i}_text", 'ans': at, 'conf': st.session_state.get(f"p5_c{i}", "모름")})
+                # 1,2,5번 복합
+                for i in [1, 2, 5]:
+                    ao = st.session_state.get(f"p5_q{i}_obj", "")
+                    at = st.session_state.get(f"p5_q{i}_text", "")
+                    if not (ao and at): is_valid = False
+                    final_data.append({'q_id': f"{i}_obj", 'ans': ao, 'conf': st.session_state.get(f"p5_c{i}", "모름")})
+                    final_data.append({'q_id': f"{i}_text", 'ans': at, 'conf': st.session_state.get(f"p5_c{i}", "모름")})
+                # 3,4번 단독
+                for i in [3, 4]:
+                    at = st.session_state.get(f"p5_q{i}_text", "")
+                    if not at: is_valid = False
+                    final_data.append({'q_id': f"{i}_text", 'ans': at, 'conf': st.session_state.get(f"p5_c{i}", "모름")})
 
             elif info['type'] == 'part6_sets':
                 c1 = st.session_state.get("p6_set1_conf", "모름")
                 c2 = st.session_state.get("p6_set2_conf", "모름")
                 c3 = st.session_state.get("p6_set3_conf", "모름")
                 
-                # Set 1
                 for i in range(1, 5):
                     ans = st.session_state.get(f"p6_q{i}", "")
                     if not ans: is_valid = False
                     final_data.append({'q_id': str(i), 'ans': ans, 'conf': c1})
-                # Set 2
                 for i in range(5, 9):
                     ans = st.session_state.get(f"p6_q{i}", "")
                     if not ans: is_valid = False
                     final_data.append({'q_id': str(i), 'ans': ans, 'conf': c2})
-                # Set 3
                 for i in range(9, 13):
                     ans = st.session_state.get(f"p6_q{i}", "")
                     if not ans: is_valid = False
                     final_data.append({'q_id': str(i), 'ans': ans, 'conf': c3})
 
-            # --- [수정 사항 3] 제출 검증 ---
+            # [수정] 빈칸 방지 로직
             if not is_valid:
                 st.error("⚠️ 모든 문항의 정답을 입력해야 제출할 수 있습니다. 빠진 부분이 없는지 확인해주세요.")
             else:
