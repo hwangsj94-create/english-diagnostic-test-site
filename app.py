@@ -43,102 +43,81 @@ def load_answer_key():
     df['q_id'] = df['q_id'].astype(str)
     return df
 
-def get_student(name, phone):
-    # 디버깅을 위해 에러 발생 시 상세 내용을 화면에 보여주는 버전입니다.
+# --- [변경] 전화번호 대신 이메일로 검색 ---
+def get_student(name, email):
     try:
         sh = get_db_connection()
         ws = sh.worksheet("students")
         data = ws.get_all_records()
         df = pd.DataFrame(data)
         
-        # 1. 데이터가 비어있는지 확인
-        if df.empty:
-            st.error("구글 시트(students)가 비어있습니다.")
-            return None
-
-        # 2. 컬럼 이름(헤더) 확인 (중요!)
-        # st.write("시트의 컬럼명:", df.columns.tolist()) # 필요시 주석 해제하여 확인
-
-        # 3. 데이터 전처리 (문자열 변환, 공백 제거)
-        # phone 컬럼이 있는지 확인
-        if 'phone' not in df.columns:
-            st.error(f"⚠️ 시트 헤더 오류: 'phone' 컬럼을 찾을 수 없습니다. 현재 컬럼: {df.columns.tolist()}")
-            st.info("구글 시트 1행(제목)을 phone, name, school, grade, last_part 로 영어로 수정해주세요.")
-            return None
+        # 공백 제거 및 소문자 변환 (이메일은 대소문자 구분 없음)
+        name = name.strip()
+        email = email.strip().lower() # 이메일 정규화
+        
+        # 데이터프레임의 email 컬럼도 정규화
+        if 'email' in df.columns:
+            df['email'] = df['email'].astype(str).str.strip().str.lower()
+            df['name'] = df['name'].astype(str).str.strip()
             
-        if 'name' not in df.columns:
-            st.error("⚠️ 시트 헤더 오류: 'name' 컬럼이 없습니다.")
-            return None
-
-        df['phone'] = df['phone'].astype(str).str.strip().str.replace("-", "")
-        df['name'] = df['name'].astype(str).str.strip()
-        
-        target_name = name.strip()
-        target_phone = phone.strip().replace("-", "")
-        
-        # 4. 검색
-        student = df[(df['name'] == target_name) & (df['phone'] == target_phone)]
-        
-        if not student.empty:
-            return student.iloc[0].to_dict()
+            student = df[(df['name'] == name) & (df['email'] == email)]
+            return student.iloc[0].to_dict() if not student.empty else None
         else:
-            # [디버깅] 왜 못 찾았는지 화면에 힌트 출력 (배포 시 삭제 가능)
-            st.warning("일치하는 학생을 찾지 못했습니다. 아래 데이터와 비교해보세요.")
-            st.write(f"입력한 값 -> 이름: '{target_name}', 전화번호: '{target_phone}'")
-            st.write("▼ 구글 시트에 저장된 데이터 (상위 5명):")
-            st.dataframe(df[['name', 'phone']].head()) # 시트 내용 보여주기
+            st.error("구글 시트(students)의 A열 제목을 'phone'에서 'email'로 변경해주세요!")
             return None
-            
-    except Exception as e:
-        st.error(f"시스템 오류 발생: {e}")
+    except:
         return None
 
-def save_student(name, phone, school, grade):
+# --- [변경] 이메일로 저장 ---
+def save_student(name, email, school, grade):
     sh = get_db_connection()
     ws = sh.worksheet("students")
     name = name.strip()
-    phone = phone.strip()
+    email = email.strip().lower()
+    
     try:
-        cell = ws.find(phone)
+        # 이메일로 검색
+        cell = ws.find(email)
+        # 정보 업데이트
         ws.update_cell(cell.row, 2, name)
         ws.update_cell(cell.row, 3, school)
         ws.update_cell(cell.row, 4, grade)
     except:
-        ws.append_row([str(phone), name, school, grade, 1])
+        # 신규 등록
+        ws.append_row([email, name, school, grade, 1])
 
-def save_answers_bulk(phone, part, data_list):
-    # 구글 시트 연결
+# --- [변경] 이메일과 함께 답안 저장 ---
+def save_answers_bulk(email, part, data_list):
     sh = get_db_connection()
     ws = sh.worksheet("answers")
     
-    # 저장할 데이터 가공
-    rows = [[str(phone), part, d['q_id'], d['ans'], d['conf']] for d in data_list]
-    
-    # 데이터 추가
+    rows = [[email, part, d['q_id'], d['ans'], d['conf']] for d in data_list]
     ws.append_rows(rows)
     
-    # 학생 상태 업데이트 (다음 파트로)
     ws_stu = sh.worksheet("students")
     try:
-        cell = ws_stu.find(str(phone))
-        # 현재 파트 + 1 로 업데이트
+        cell = ws_stu.find(email)
         ws_stu.update_cell(cell.row, 5, part + 1)
     except:
         pass
 
-def load_student_answers(phone):
+def load_student_answers(email):
     sh = get_db_connection()
     ws = sh.worksheet("answers")
     data = ws.get_all_records()
     df = pd.DataFrame(data)
-    df['phone'] = df['phone'].astype(str)
-    return df[df['phone'] == str(phone)]
+    # 이메일 정규화 후 검색
+    if 'email' in df.columns:
+        df['email'] = df['email'].astype(str).str.strip().str.lower()
+        return df[df['email'] == str(email).strip().lower()]
+    else:
+        return pd.DataFrame()
 
 # ==========================================
 # 2. 채점 및 분석 로직
 # ==========================================
-def calculate_results(phone):
-    student_ans_df = load_student_answers(phone)
+def calculate_results(email):
+    student_ans_df = load_student_answers(email)
     key_df = load_answer_key()
     results = []
     
@@ -241,61 +220,69 @@ input[type="text"] {font-size: 16px !important;}
 </style>
 """, unsafe_allow_html=True)
 
-if 'user_phone' not in st.session_state: st.session_state['user_phone'] = None
+# 세션 키 변경 (phone -> email)
+if 'user_email' not in st.session_state: st.session_state['user_email'] = None
 if 'user_name' not in st.session_state: st.session_state['user_name'] = None
 if 'current_part' not in st.session_state: st.session_state['current_part'] = 1
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = False
 
 # ---------------------------------------------------------
-# 화면 1: 로그인
+# 화면 1: 로그인 (이메일 입력으로 변경)
 # ---------------------------------------------------------
-if st.session_state['user_phone'] is None:
+if st.session_state['user_email'] is None:
     st.title("🎓 영어 역량 정밀 진단고사")
+    st.info("로그인 시 이메일 주소를 사용합니다. (예: student@naver.com)")
     
     tab1, tab2 = st.tabs(["시험 응시 / 이어하기", "내 결과 확인하기"])
     
     with tab1:
         with st.form("login_form"):
             name = st.text_input("이름")
-            phone = st.text_input("전화번호 (숫자만 입력)")
+            email = st.text_input("이메일 주소")
             school_opt = st.radio("학교", ["신원고등학교", "동산고등학교", "직접 입력"])
             custom_school = st.text_input("학교명 입력") if school_opt == "직접 입력" else ""
             grade = st.selectbox("학년 (2026년 기준)", ["중3", "고1", "고2", "고3"])
             
             if st.form_submit_button("진단 시작하기"):
-                if name and phone:
-                    final_school = custom_school if school_opt == "직접 입력" else school_opt
-                    with st.spinner("정보 확인 중..."):
-                        stu = get_student(name, phone)
-                        if stu:
-                            cp = stu['last_part']
-                            st.session_state['current_part'] = 9 if cp > 8 else cp
-                            save_student(name, phone, final_school, grade)
-                        else:
-                            save_student(name, phone, final_school, grade)
-                            st.session_state['current_part'] = 1
-                        
-                        st.session_state['user_name'] = name
-                        st.session_state['user_phone'] = phone
-                        st.session_state['view_mode'] = False
-                    st.rerun()
+                if name and email:
+                    # 이메일 유효성 체크 (간단히 @ 포함 여부만)
+                    if "@" not in email:
+                        st.error("올바른 이메일 형식이 아닙니다.")
+                    else:
+                        final_school = custom_school if school_opt == "직접 입력" else school_opt
+                        with st.spinner("정보 확인 중..."):
+                            stu = get_student(name, email)
+                            if stu:
+                                cp = stu['last_part']
+                                st.session_state['current_part'] = 9 if cp > 8 else cp
+                                save_student(name, email, final_school, grade)
+                            else:
+                                save_student(name, email, final_school, grade)
+                                st.session_state['current_part'] = 1
+                            
+                            st.session_state['user_name'] = name
+                            st.session_state['user_email'] = email
+                            st.session_state['view_mode'] = False
+                        st.rerun()
                 else:
-                    st.error("이름과 전화번호를 입력하세요.")
+                    st.error("이름과 이메일을 입력하세요.")
                     
     with tab2:
         with st.form("check_result"):
             chk_name = st.text_input("이름")
-            chk_phone = st.text_input("전화번호")
+            chk_email = st.text_input("이메일 주소")
             if st.form_submit_button("결과 조회"):
-                if chk_name and chk_phone:
-                    stu = get_student(chk_name, chk_phone)
+                if chk_name and chk_email:
+                    stu = get_student(chk_name, chk_email)
                     if stu:
                         st.session_state['user_name'] = chk_name
-                        st.session_state['user_phone'] = chk_phone
+                        st.session_state['user_email'] = chk_email
                         st.session_state['view_mode'] = True
                         st.rerun()
                     else:
-                        st.error("응시 이력이 없습니다.")
+                        st.error("응시 이력이 없습니다. (이름/이메일 확인)")
+                else:
+                    st.warning("이름과 이메일을 입력해주세요.")
 
 # ---------------------------------------------------------
 # 화면 2: 시험 진행
@@ -308,8 +295,7 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
     st.progress(part / 8)
     
     with st.form(f"exam_form_{part}"):
-        
-        # --- UI 그리기 (기존과 동일) ---
+        # --- UI 그리기 (기존 코드와 동일) ---
         if info['type'] == 'simple_obj':
             st.info(f"총 {info['count']}문항입니다.")
             for i in range(1, info['count'] + 1):
@@ -333,7 +319,6 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
             with c3: st.radio("확신도", ["확신", "애매", "모름"], key="p2_c10")
 
         elif info['type'] == 'part3_special':
-            # Q1
             st.markdown("**문항 1**")
             c1, c2 = st.columns(2)
             with c1: st.text_input("(1) Main Subject", key="p3_q1_subj")
@@ -341,7 +326,6 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
             st.radio("(2) 정답", ["1","2","3","4","5"], horizontal=True, key="p3_q1_obj")
             st.radio("확신도", ["확신", "애매", "모름"], horizontal=True, key="p3_c1")
             st.markdown("---")
-            # Q2
             st.markdown("**문항 2**")
             c1, c2 = st.columns(2)
             with c1: st.text_input("(1) Main Subject", key="p3_q2_subj")
@@ -349,13 +333,11 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
             st.radio("(2) 정답", ["1","2","3","4","5"], horizontal=True, key="p3_q2_obj")
             st.radio("확신도", ["확신", "애매", "모름"], horizontal=True, key="p3_c2")
             st.markdown("---")
-            # Q3
             st.markdown("**문항 3**")
             st.text_input("(1) Subject of 'Convinced'", key="p3_q3_subj")
             st.radio("(2) 정답", ["1","2","3","4","5"], horizontal=True, key="p3_q3_obj")
             st.radio("확신도", ["확신", "애매", "모름"], horizontal=True, key="p3_c3")
             st.markdown("---")
-            # Q4
             st.markdown("**문항 4**")
             c1, c2 = st.columns(2)
             with c1: st.text_input("(1) Main Subject", key="p3_q4_subj")
@@ -363,7 +345,6 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
             st.radio("(2) 정답", ["1","2","3","4","5"], horizontal=True, key="p3_q4_obj")
             st.radio("확신도", ["확신", "애매", "모름"], horizontal=True, key="p3_c4")
             st.markdown("---")
-            # Q5
             st.markdown("**문항 5**")
             st.radio("(1) 정답", ["1","2","3","4","5"], horizontal=True, key="p3_q5_obj")
             st.text_input("(2) 빈칸 채우기", key="p3_q5_text")
@@ -409,13 +390,11 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                 st.radio("확신도", ["확신", "애매", "모름"], horizontal=True, key=f"p{part}_c{i}")
                 st.markdown("---")
 
-        # ==========================================
-        # [제출 및 저장 로직] - 여기가 핵심 수정 사항
-        # ==========================================
+        # --- 제출 버튼 (이메일 기반 저장으로 변경됨) ---
         if st.form_submit_button(f"Part {part} 제출 및 저장"):
             final_data = []
             
-            # 1. 객관식/서술형 단순형 (Part 1, 7, 8)
+            # 1. 단순 객관식/서술형 (Part 1, 7, 8)
             if info['type'] in ['simple_obj', 'simple_subj']:
                 for i in range(1, info['count'] + 1):
                     final_data.append({
@@ -477,7 +456,8 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
             # 저장 실행
             try:
                 with st.spinner("답안을 안전하게 저장 중입니다..."):
-                    save_answers_bulk(st.session_state['user_phone'], part, final_data)
+                    # 이메일 기반 저장 함수 호출
+                    save_answers_bulk(st.session_state['user_email'], part, final_data)
                     st.session_state['current_part'] += 1
                     time.sleep(1) # 저장 안정성 확보
                     st.rerun()
@@ -493,7 +473,8 @@ else:
     
     with st.spinner("최종 성적을 분석 중입니다..."):
         try:
-            df_res = calculate_results(st.session_state['user_phone'])
+            # 이메일 기반 분석 함수 호출
+            df_res = calculate_results(st.session_state['user_email'])
             show_report_dashboard(df_res, st.session_state['user_name'])
         except Exception as e:
             st.error(f"분석 오류: {e}")
