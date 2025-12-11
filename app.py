@@ -44,17 +44,53 @@ def load_answer_key():
     return df
 
 def get_student(name, phone):
+    # 디버깅을 위해 에러 발생 시 상세 내용을 화면에 보여주는 버전입니다.
     try:
         sh = get_db_connection()
         ws = sh.worksheet("students")
         data = ws.get_all_records()
         df = pd.DataFrame(data)
-        df['phone'] = df['phone'].astype(str)
-        name = name.strip()
-        phone = phone.strip()
-        student = df[(df['name'] == name) & (df['phone'] == phone)]
-        return student.iloc[0].to_dict() if not student.empty else None
-    except:
+        
+        # 1. 데이터가 비어있는지 확인
+        if df.empty:
+            st.error("구글 시트(students)가 비어있습니다.")
+            return None
+
+        # 2. 컬럼 이름(헤더) 확인 (중요!)
+        # st.write("시트의 컬럼명:", df.columns.tolist()) # 필요시 주석 해제하여 확인
+
+        # 3. 데이터 전처리 (문자열 변환, 공백 제거)
+        # phone 컬럼이 있는지 확인
+        if 'phone' not in df.columns:
+            st.error(f"⚠️ 시트 헤더 오류: 'phone' 컬럼을 찾을 수 없습니다. 현재 컬럼: {df.columns.tolist()}")
+            st.info("구글 시트 1행(제목)을 phone, name, school, grade, last_part 로 영어로 수정해주세요.")
+            return None
+            
+        if 'name' not in df.columns:
+            st.error("⚠️ 시트 헤더 오류: 'name' 컬럼이 없습니다.")
+            return None
+
+        df['phone'] = df['phone'].astype(str).str.strip().str.replace("-", "")
+        df['name'] = df['name'].astype(str).str.strip()
+        
+        target_name = name.strip()
+        target_phone = phone.strip().replace("-", "")
+        
+        # 4. 검색
+        student = df[(df['name'] == target_name) & (df['phone'] == target_phone)]
+        
+        if not student.empty:
+            return student.iloc[0].to_dict()
+        else:
+            # [디버깅] 왜 못 찾았는지 화면에 힌트 출력 (배포 시 삭제 가능)
+            st.warning("일치하는 학생을 찾지 못했습니다. 아래 데이터와 비교해보세요.")
+            st.write(f"입력한 값 -> 이름: '{target_name}', 전화번호: '{target_phone}'")
+            st.write("▼ 구글 시트에 저장된 데이터 (상위 5명):")
+            st.dataframe(df[['name', 'phone']].head()) # 시트 내용 보여주기
+            return None
+            
+    except Exception as e:
+        st.error(f"시스템 오류 발생: {e}")
         return None
 
 def save_student(name, phone, school, grade):
