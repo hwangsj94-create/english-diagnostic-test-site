@@ -117,7 +117,7 @@ def calculate_results(email):
         
         # '잘 모르겠음' 처리
         if user_ans == "잘 모르겠음":
-            results.append({'part': int(part), 'q_id': q_id, 'is_correct': False, 'quadrant': "Deficiency"})
+            results.append({'part': int(part), 'q_id': q_id, 'is_correct': False, 'quadrant': "Deficiency", 'user_ans': user_ans, 'correct_ans': '(미입력)'})
             continue
 
         key_row = key_df[(key_df['part'] == part) & (key_df['q_id'] == q_id)]
@@ -144,15 +144,22 @@ def calculate_results(email):
         if is_correct: quadrant = "Master" if conf == "확신" else "Lucky"
         else: quadrant = "Delusion" if conf == "확신" else "Deficiency"
             
-        results.append({'part': int(part), 'q_id': q_id, 'is_correct': is_correct, 'quadrant': quadrant})
+        results.append({
+            'part': int(part), 
+            'q_id': q_id, 
+            'is_correct': is_correct, 
+            'quadrant': quadrant,
+            'user_ans': user_ans,
+            'correct_ans': correct_ans
+        })
         
     return pd.DataFrame(results)
 
 # ==========================================
-# 3. 전문가 분석 텍스트 생성기
+# 3. 전문가 분석 텍스트 생성기 (Narrative Engine)
 # ==========================================
 
-# (1) 예상 등급 분석
+# (1) 예상 등급 분석 (계단식 그룹 평균 로직 적용)
 def generate_grade_analysis(df_results, student_name):
     part_scores = df_results.groupby('part')['is_correct'].mean() * 100
     all_parts = pd.Series(0, index=range(1, 9))
@@ -363,16 +370,7 @@ def generate_total_review(df_results, student_name):
     summary = f"**[진단 요약]**\n"
     summary += f"데이터 분석 결과, {student_name} 학생의 성적 향상을 가로막는 결정적인 병목 구간은 {', '.join(weak_titles)} 영역입니다. "
     summary += f"해당 영역들의 평균 정답률은 약 {avg_weak_score}%로, 전체 학습 균형을 무너뜨리는 주원인이 되고 있습니다. "
-    
-    delusion_cnt = 0
-    for p in weak_parts_indices:
-        delusion_cnt += df_results[df_results['part'] == p]['quadrant'].value_counts().get("Delusion", 0)
-        
-    if delusion_cnt > 0:
-        summary += f"특히 해당 파트에서 오답임에도 정답이라고 확신한 문항이 발견되었습니다. 이는 단순 실수가 아니라 개념의 오류가 뿌리 깊게 박혀 있음을 시사합니다. "
-    else:
-        summary += f"해당 파트에 대한 기초 개념 자체가 정립되지 않아 문제 접근 자체에 어려움을 겪고 있는 상태입니다. "
-    summary += "\n\n"
+    summary += "이러한 불균형을 해소하지 않고 무작정 진도만 나가는 것은 효율이 떨어집니다. 따라서 향후 학습 계획은 이 약점을 최우선으로 보완하는 방향으로 설계되어야 합니다.\n\n"
 
     summary += f"**[우선순위 로드맵]**\n"
     summary += f"성적 상승을 위해 다음 두 가지 학습 목표를 최우선으로 삼아야 합니다. "
@@ -494,18 +492,6 @@ def show_report_dashboard(df_results, student_name):
     st.subheader("5. 종합 평가 및 솔루션")
     st.write(total_txt)
 
-# ==========================================
-# 5. 메인 앱 실행
-# ==========================================
-st.set_page_config(page_title="영어 역량 정밀 진단", layout="wide")
-st.markdown("""<style>
-div.row-widget.stRadio > div {flex-direction: row;} 
-div.row-widget.stRadio > div > label {background-color: #f8f9fa; padding: 10px 20px; border-radius: 8px; margin-right: 8px; cursor: pointer; border: 1px solid #dee2e6;}
-div.row-widget.stRadio > div > label:hover {background-color: #e9ecef;}
-textarea {font-size: 16px !important;} input[type="text"] {font-size: 16px !important;}
-@media print { button { display: none !important; } .stApp { margin: 0; padding: 0; } }
-</style>""", unsafe_allow_html=True)
-
 if 'user_email' not in st.session_state: st.session_state['user_email'] = None
 if 'user_name' not in st.session_state: st.session_state['user_name'] = None
 if 'current_part' not in st.session_state: st.session_state['current_part'] = 1
@@ -514,7 +500,8 @@ if 'view_mode' not in st.session_state: st.session_state['view_mode'] = False
 if st.session_state['user_email'] is None:
     st.title("🎓 영어 역량 정밀 진단고사")
     st.info("로그인 시 이메일 주소를 사용합니다.")
-    tab1, tab2 = st.tabs(["시험 응시", "결과 확인"])
+    tab1, tab2, tab3 = st.tabs(["시험 응시", "분석 리포트", "제출 정답 확인"]) # Tab 3 added
+    
     with tab1:
         with st.form("login"):
             name = st.text_input("이름")
@@ -538,6 +525,33 @@ if st.session_state['user_email'] is None:
                 if get_student(n, e):
                     st.session_state['user_name'] = n; st.session_state['user_email'] = e; st.session_state['view_mode'] = True; st.rerun()
                 else: st.error("이력이 없습니다.")
+    with tab3: # New Tab Logic
+        st.subheader("📋 제출한 답안 상세 보기")
+        with st.form("check_details"):
+            n_d = st.text_input("이름"); e_d = st.text_input("이메일")
+            if st.form_submit_button("답안 조회"):
+                if get_student(n_d, e_d):
+                    # Fetch results using existing calculation logic to get correctness
+                    df_detail = calculate_results(e_d)
+                    if not df_detail.empty:
+                        st.success(f"{n_d}님의 제출 답안입니다.")
+                        # Display per Part
+                        for p in range(1, 9):
+                            st.markdown(f"#### {EXAM_STRUCTURE[p]['title']}")
+                            p_data = df_detail[df_detail['part'] == p].copy()
+                            if p_data.empty:
+                                st.info("제출된 데이터가 없습니다.")
+                            else:
+                                # Formatting for display
+                                p_data['결과'] = p_data['is_correct'].apply(lambda x: '🟢 정답' if x else '🔴 오답')
+                                display_df = p_data[['q_id', 'user_ans', 'correct_ans', '결과']].rename(columns={
+                                    'q_id': '문항 번호', 'user_ans': '제출 답안', 'correct_ans': '실제 정답'
+                                })
+                                st.dataframe(display_df, use_container_width=True, hide_index=True)
+                    else:
+                        st.warning("제출된 답안 데이터가 없습니다.")
+                else:
+                    st.error("학생 정보를 찾을 수 없습니다.")
 
 elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8:
     part = st.session_state['current_part']
@@ -545,6 +559,10 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
     st.title(info['title']); st.progress(part/8)
     if part == 8: st.error("⚠️ 서술형 주의: 마침표(.) 필수, 띄어쓰기 주의")
     
+    def update_conf(key_ans, key_conf):
+        if st.session_state[key_ans] == "잘 모르겠음":
+            st.session_state[key_conf] = "모름"
+
     with st.form(f"exam_{part}"):
         if info['type'] == 'simple_obj':
             for i in range(1, info['count']+1):
@@ -600,8 +618,7 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
         elif info['type'] == 'part6_sets':
             qg=1
             for s in range(1,4):
-                st.markdown(f"### [Set {s}]"); st.text_input(f"Q{qg} Kw", key=f"p6_q{qg}"); qg+=1
-                k_a1=f"p6_q{qg}"; st.radio(f"Q{qg} Tone", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a1, index=None); qg+=1
+                st.markdown(f"### [Set {s}]"); st.text_input(f"Q{qg} Kw", key=f"p6_q{qg}"); k_a1=f"p6_q{qg}"; st.radio(f"Q{qg} Tone", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a1, index=None); qg+=1
                 k_a2=f"p6_q{qg}"; st.radio(f"Q{qg} Flow", ["1","2","3","4","잘 모르겠음"], horizontal=True, key=k_a2, index=None); qg+=1
                 st.text_area(f"Q{qg} Sum", key=f"p6_q{qg}"); qg+=1
                 st.radio(f"Set {s} 확신도", ["확신","애매","모름"], horizontal=True, key=f"p6_set{s}_conf", index=None); st.markdown("---")
