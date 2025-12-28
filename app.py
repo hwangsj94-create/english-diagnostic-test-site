@@ -731,4 +731,80 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                 if o1 == "잘 모르겠음": c1 = "모름"
                 if not(s1 and v1 and o1 and c1): is_valid=False
                 final_data.extend([{'q_id':'1_subj','ans':s1,'conf':c1},{'q_id':'1_verb','ans':v1,'conf':c1},{'q_id':'1_obj','ans':o1,'conf':c1}])
-                s2=st.session_state.get("p3_q2_subj"); v2=st.session_state.get
+                s2=st.session_state.get("p3_q2_subj"); v2=st.session_state.get("p3_q2_verb"); o2=st.session_state.get("p3_q2_obj"); c2=st.session_state.get("p3_c2")
+                if o2 == "잘 모르겠음": c2 = "모름"
+                if not(s2 and v2 and o2 and c2): is_valid=False
+                final_data.extend([{'q_id':'2_subj','ans':s2,'conf':c2},{'q_id':'2_verb','ans':v2,'conf':c2},{'q_id':'2_obj','ans':o2,'conf':c2}])
+                s3=st.session_state.get("p3_q3_subj"); o3=st.session_state.get("p3_q3_obj"); c3=st.session_state.get("p3_c3")
+                if o3 == "잘 모르겠음": c3 = "모름"
+                if not(s3 and o3 and c3): is_valid=False
+                final_data.extend([{'q_id':'3_subj','ans':s3,'conf':c3},{'q_id':'3_obj','ans':o3,'conf':c3}])
+                s4=st.session_state.get("p3_q4_subj"); v4=st.session_state.get("p3_q4_verb"); o4=st.session_state.get("p3_q4_obj"); c4=st.session_state.get("p3_c4")
+                if o4 == "잘 모르겠음": c4 = "모름"
+                if not(s4 and v4 and o4 and c4): is_valid=False
+                final_data.extend([{'q_id':'4_subj','ans':s4,'conf':c4},{'q_id':'4_verb','ans':v4,'conf':c4},{'q_id':'4_obj','ans':o4,'conf':c4}])
+                o5=st.session_state.get("p3_q5_obj"); t5=st.session_state.get("p3_q5_text"); c5=st.session_state.get("p3_c5")
+                if o5 == "잘 모르겠음": c5 = "모름"
+                if not(o5 and t5 and c5): is_valid=False
+                final_data.extend([{'q_id':'5_obj','ans':o5,'conf':c5},{'q_id':'5_text','ans':t5,'conf':c5}])
+            elif info['type'] == 'part4_special':
+                for i in range(1,6):
+                    a=st.session_state.get(f"p4_q{i}"); c=st.session_state.get(f"p4_c{i}")
+                    if a == "잘 모르겠음": c = "모름"
+                    if not a or not c: is_valid=False
+                    final_data.append({'q_id':str(i),'ans':a,'conf':c})
+            elif info['type'] == 'part5_special':
+                for i in [1,2,5]:
+                    ao=st.session_state.get(f"p5_q{i if i!=5 else 5}_obj"); at=st.session_state.get(f"p5_q{i if i!=5 else 5}_text"); c=st.session_state.get(f"p5_c{i if i!=5 else 5}")
+                    if ao == "잘 모르겠음": c = "모름"
+                    if not(ao and at and c): is_valid=False
+                    final_data.append({'q_id':f"{i}_obj",'ans':ao,'conf':c}); final_data.append({'q_id':f"{i}_text",'ans':at,'conf':c})
+                for i in [3,4]:
+                    at=st.session_state.get(f"p5_q{i}_text"); c=st.session_state.get(f"p5_c{i}")
+                    if not at or not c: is_valid=False
+                    final_data.append({'q_id':f"{i}_text",'ans':at,'conf':c})
+            elif info['type'] == 'part6_sets':
+                c1=st.session_state.get("p6_set1_conf"); c2=st.session_state.get("p6_set2_conf"); c3=st.session_state.get("p6_set3_conf")
+                if not(c1 and c2 and c3): is_valid=False
+                qg = 1
+                for s in range(1,4):
+                    k_kw = f"p6_q{qg}"; a_kw = st.session_state.get(k_kw)
+                    if not a_kw: is_valid = False
+                    final_data.append({'q_id':str(qg),'ans':a_kw,'conf':eval(f"c{s}")})
+                    qg += 1
+                    k_t = f"p6_q{qg}_t"; a_t = st.session_state.get(k_t)
+                    if not a_t: is_valid = False
+                    final_data.append({'q_id':str(qg),'ans':a_t,'conf':eval(f"c{s}")})
+                    qg += 1
+                    k_f = f"p6_q{qg}_f"; a_f = st.session_state.get(k_f)
+                    if not a_f: is_valid = False
+                    final_data.append({'q_id':str(qg),'ans':a_f,'conf':eval(f"c{s}")})
+                    qg += 1
+                    k_s = f"p6_q{qg}"; a_s = st.session_state.get(k_s)
+                    if not a_s: is_valid = False
+                    final_data.append({'q_id':str(qg),'ans':a_s,'conf':eval(f"c{s}")})
+                    qg += 1
+            elif info['type'] == 'simple_subj':
+                for i in range(1,6):
+                    a=st.session_state.get(f"p8_q{i}"); c=st.session_state.get(f"p8_c{i}")
+                    if not a or not c: is_valid=False
+                    final_data.append({'q_id':str(i),'ans':a,'conf':c})
+
+            if not is_valid:
+                st.error("⚠️ 모든 문항의 정답과 확신도를 입력해야 제출할 수 있습니다.")
+            else:
+                try:
+                    with st.spinner("저장 중..."):
+                        save_answers_bulk(st.session_state['user_email'], part, final_data)
+                        st.session_state['current_part'] += 1
+                        time.sleep(1)
+                        st.rerun()
+                except Exception as e: st.error(f"오류: {e}")
+
+else:
+    st.balloons()
+    try:
+        df_res = calculate_results(st.session_state['user_email'])
+        show_report_dashboard(df_res, st.session_state['user_name'])
+    except Exception as e: st.error(f"분석 중 오류 발생: {e}")
+    if st.button("처음으로"): st.session_state.clear(); st.rerun()
