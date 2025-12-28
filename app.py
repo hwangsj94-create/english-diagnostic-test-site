@@ -159,15 +159,15 @@ def calculate_results(email):
 # 3. 전문가 분석 텍스트 생성기 (Narrative Engine)
 # ==========================================
 
-# (1) 예상 등급 분석 (계단식 그룹 평균 로직 적용)
+# (1) 예상 등급 분석
 def generate_grade_analysis(df_results, student_name):
     part_scores = df_results.groupby('part')['is_correct'].mean() * 100
     all_parts = pd.Series(0, index=range(1, 9))
     part_scores = part_scores.combine_first(all_parts).sort_index()
 
-    avg_basic = int(part_scores[1:4].mean())
-    avg_inter = int(part_scores[4:6].mean())
-    avg_adv = int(part_scores[6:8].mean())
+    avg_basic = int(part_scores[1:4].mean()) # P1~3
+    avg_inter = int(part_scores[4:6].mean()) # P4~5
+    avg_adv = int(part_scores[6:8].mean())   # P6~7 (P8 제외)
 
     predicted_grade = ""
     grade_keyword = ""
@@ -177,19 +177,16 @@ def generate_grade_analysis(df_results, student_name):
         predicted_grade = "5등급 이하"
         grade_keyword = "기초 재건 필요 (Rebuilding Phase)"
         analysis_text += f"안타깝게도 영어 학습의 뿌리가 되는 기초 체력(어휘, 어법, 구문) 영역의 평균 점수가 {avg_basic}점에 머물러 있습니다. 이 단계가 흔들리면 이후 파트의 점수가 아무리 좋아도 이는 실력이 아닌 '감'에 의존한 일시적인 성과일 뿐입니다. 현재로서는 고등 영어의 진도를 무리하게 나가는 것보다, 중등 과정의 핵심 어휘와 구문부터 다시 점검하여 무너진 기초를 세우는 것이 가장 시급합니다."
-    
     elif avg_inter < 60:
         predicted_grade = "4등급"
         grade_keyword = "논리적 도약 필요 (Logical Gap)"
         analysis_text += f"기초 체력(Part 1~3)은 어느 정도 형성되어 있으나, 이를 문장 간의 논리적 연결이나 글의 속뜻 파악으로 확장하는 응용 단계(Part 4~5)에서 병목 현상이 발생했습니다. 해당 구간의 평균 점수는 {avg_inter}점으로, 이는 단순 해석은 가능하지만 '무슨 말인지 모르는' 상태를 의미합니다. 이 단계에서 막히면 3등급의 벽을 넘기 어렵습니다. 4등급 전후로 예측되며, 단순 번역을 넘어선 논리 독해 훈련이 절실합니다."
-    
     elif avg_adv < 60:
         predicted_grade = "낮은 2등급 ~ 3등급"
         grade_keyword = "실전 전략 부재 (Strategy Needed)"
         analysis_text += f"기본기와 논리력은 우수하나, 긴 지문을 거시적으로 조망하거나 전략적으로 문제를 해결하는 심화 단계(Part 6~7)에서 평균 {avg_adv}점으로 한계를 보이고 있습니다. 전반적인 영어 실력은 상위권 도약을 목전에 둔 상태이나, 실전 변수를 통제하는 전략이 부족하여 2등급 하위권에서 3등급 사이에 머물 것으로 보입니다."
-    
     else:
-        total_avg = int(part_scores[1:8].mean())
+        total_avg = int(part_scores[1:8].mean()) # P8 제외 평균
         if total_avg >= 90:
             predicted_grade = "1등급 ~ 높은 2등급"
             grade_keyword = "완성형 인재 (Masterpiece)"
@@ -201,11 +198,12 @@ def generate_grade_analysis(df_results, student_name):
 
     return predicted_grade, grade_keyword, analysis_text
 
-# (2) 메타인지 분석
+# (2) 메타인지 분석 (파트별 데이터 추가)
 def generate_meta_analysis(df_results, student_name):
     total_cnt = len(df_results)
-    if total_cnt == 0: return "데이터 부족"
+    if total_cnt == 0: return "데이터 부족", pd.DataFrame()
     
+    # 1. 전체 분석
     quad_counts = df_results['quadrant'].value_counts()
     cnt_master = quad_counts.get("Master", 0)
     cnt_delusion = quad_counts.get("Delusion", 0)
@@ -219,16 +217,44 @@ def generate_meta_analysis(df_results, student_name):
     
     text = f"단순히 몇 개를 틀렸는지보다 중요한 것은, 학생이 자신의 지식 상태를 얼마나 정확하게 인지하고 있느냐입니다. {student_name} 학생의 답안 데이터를 '확신도'와 교차 분석하여, 점수의 질적 가치를 평가하는 3가지 핵심 지표를 도출했습니다.\n\n"
     text += f"첫째, 학생의 **득점 순도(Score Purity)**는 {int(score_purity)}%입니다. 이는 맞힌 문제 중에서 운이 아니라 진짜 실력으로 맞힌 비율을 뜻합니다. "
-    if score_purity < 70: text += "현재 점수에는 상당한 '거품'이 끼어 있습니다. 맞힌 문제라 하더라도 다시 풀면 틀릴 가능성이 높은 '불안한 잠재력' 상태의 문항이 많습니다. 이 점수를 자신의 실력으로 착각하면, 실제 시험에서 점수가 급락하는 낭패를 볼 수 있습니다. "
+    if score_purity < 70: text += "현재 점수에는 상당한 '거품'이 끼어 있습니다. 맞힌 문제라 하더라도 다시 풀면 틀릴 가능성이 높은 '불안한 잠재력' 상태의 문항이 많습니다. "
     else: text += "매우 건강한 수치입니다. 학생이 받은 점수는 요행이 아닌 탄탄한 실력에 기반하고 있어, 어떤 난이도의 시험에서도 쉽게 무너지지 않는 저력을 보여줄 것입니다. "
-        
+    
     text += f"\n\n둘째, **오답 고집도(Error Resistance)**는 {int(error_resistance)}%입니다. 이는 틀린 문제 중에서 '몰라서' 틀린 것이 아니라 '맞았다고 착각'한 비율입니다. "
     if error_resistance >= 50: text += "매우 위험한 신호입니다. 학생은 잘못된 개념을 올바른 지식이라고 강하게 믿고 있는 상태입니다. 스스로의 오개념을 깨뜨리는 과정 없이는 성적 향상이 불가능한 '교정 고위험군'입니다. "
     else: text += "양호한 편입니다. 학생은 자신의 부족함을 인정할 줄 아는 열린 태도를 가지고 있어, 올바른 학습법이 제시되면 빠르게 성적을 올릴 수 있는 '학습 스펀지'와 같은 상태입니다. "
-        
-    text += f"\n\n셋째, **자가 진단 정확도(Calibration Accuracy)**는 {int(calibration_acc)}%입니다. 자신이 아는 것과 모르는 것을 구별하는 능력입니다. 이 능력이 높을수록 아는 것은 건너뛰고 모르는 것에 집중하는 효율적인 학습이 가능합니다. 낮은 경우에는 아는 것을 또 보거나 모르는 것을 안다고 착각하여 시간을 낭비하게 됩니다.\n\n"
+    
+    text += f"\n\n셋째, **자가 진단 정확도(Calibration Accuracy)**는 {int(calibration_acc)}%입니다. 자신이 아는 것과 모르는 것을 구별하는 능력입니다. 이 능력이 높을수록 아는 것은 건너뛰고 모르는 것에 집중하는 효율적인 학습이 가능합니다.\n\n"
     text += "결론적으로, 점수 뒤에 숨겨진 이 메타인지 패턴을 이해해야 합니다. 모르는 건 죄가 아니지만, '안다고 착각하는 것'은 입시에서 가장 큰 적입니다. 이번 진단은 이 '착각'을 수치화하여 보여주었다는 점에서 큰 의미가 있습니다."
-    return text
+
+    # 2. 파트별 데이터 계산
+    part_meta_list = []
+    for p in range(1, 9):
+        p_df = df_results[df_results['part'] == p]
+        if p_df.empty: continue
+        
+        q_cnts = p_df['quadrant'].value_counts()
+        c_master = q_cnts.get("Master", 0)
+        c_lucky = q_cnts.get("Lucky", 0)
+        c_delusion = q_cnts.get("Delusion", 0)
+        c_deficiency = q_cnts.get("Deficiency", 0)
+        
+        p_correct = c_master + c_lucky
+        p_wrong = c_delusion + c_deficiency
+        p_total = len(p_df)
+        
+        p_purity = (c_master / p_correct * 100) if p_correct > 0 else 0
+        p_resist = (c_delusion / p_wrong * 100) if p_wrong > 0 else 0
+        p_calib = ((c_master + c_deficiency) / p_total * 100) if p_total > 0 else 0
+        
+        part_meta_list.append({
+            "영역": EXAM_STRUCTURE[p]['title'].split('.')[1].strip(),
+            "득점 순도": f"{int(p_purity)}%",
+            "오답 고집도": f"{int(p_resist)}%",
+            "자가 진단 정확도": f"{int(p_calib)}%"
+        })
+    
+    return text, pd.DataFrame(part_meta_list)
 
 # (3) Part 종합 총평
 def generate_part_overview(df_results, student_name):
@@ -428,7 +454,7 @@ def show_report_dashboard(df_results, student_name):
         return
 
     pred_grade, grade_kw, grade_txt = generate_grade_analysis(df_results, student_name)
-    meta_txt = generate_meta_analysis(df_results, student_name)
+    meta_txt, meta_df = generate_meta_analysis(df_results, student_name) # Changed: Unpack tuple
     part_overview_txt = generate_part_overview(df_results, student_name)
     det_dict = generate_part_specific_analysis(df_results, student_name)
     total_txt = generate_total_review(df_results, student_name)
@@ -463,6 +489,10 @@ def show_report_dashboard(df_results, student_name):
     with c_m2:
         st.write("\n")
         st.write(meta_txt)
+    
+    # New: Display Part-wise Meta Table
+    st.markdown("**[파트별 메타인지 상세 지표]**")
+    st.dataframe(meta_df, use_container_width=True, hide_index=True)
     st.divider()
 
     c_g1, c_g2 = st.columns([1, 1])
@@ -500,7 +530,7 @@ if 'view_mode' not in st.session_state: st.session_state['view_mode'] = False
 if st.session_state['user_email'] is None:
     st.title("🎓 영어 역량 정밀 진단고사")
     st.info("로그인 시 이메일 주소를 사용합니다.")
-    tab1, tab2, tab3 = st.tabs(["시험 응시", "분석 리포트", "제출 정답 확인"]) # Tab 3 added
+    tab1, tab2, tab3 = st.tabs(["시험 응시", "분석 리포트", "제출 정답 확인"])
     
     with tab1:
         with st.form("login"):
@@ -525,24 +555,21 @@ if st.session_state['user_email'] is None:
                 if get_student(n, e):
                     st.session_state['user_name'] = n; st.session_state['user_email'] = e; st.session_state['view_mode'] = True; st.rerun()
                 else: st.error("이력이 없습니다.")
-    with tab3: # New Tab Logic
+    with tab3: 
         st.subheader("📋 제출한 답안 상세 보기")
         with st.form("check_details"):
             n_d = st.text_input("이름"); e_d = st.text_input("이메일")
             if st.form_submit_button("답안 조회"):
                 if get_student(n_d, e_d):
-                    # Fetch results using existing calculation logic to get correctness
                     df_detail = calculate_results(e_d)
                     if not df_detail.empty:
                         st.success(f"{n_d}님의 제출 답안입니다.")
-                        # Display per Part
                         for p in range(1, 9):
                             st.markdown(f"#### {EXAM_STRUCTURE[p]['title']}")
                             p_data = df_detail[df_detail['part'] == p].copy()
                             if p_data.empty:
                                 st.info("제출된 데이터가 없습니다.")
                             else:
-                                # Formatting for display
                                 p_data['결과'] = p_data['is_correct'].apply(lambda x: '🟢 정답' if x else '🔴 오답')
                                 display_df = p_data[['q_id', 'user_ans', 'correct_ans', '결과']].rename(columns={
                                     'q_id': '문항 번호', 'user_ans': '제출 답안', 'correct_ans': '실제 정답'
@@ -618,8 +645,8 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
         elif info['type'] == 'part6_sets':
             qg=1
             for s in range(1,4):
-                st.markdown(f"### [Set {s}]"); st.text_input(f"Q{qg} Kw", key=f"p6_q{qg}"); k_a1=f"p6_q{qg}"; st.radio(f"Q{qg} Tone", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a1, index=None); qg+=1
-                k_a2=f"p6_q{qg}"; st.radio(f"Q{qg} Flow", ["1","2","3","4","잘 모르겠음"], horizontal=True, key=k_a2, index=None); qg+=1
+                st.markdown(f"### [Set {s}]"); st.text_input(f"Q{qg} Kw", key=f"p6_q{qg}"); k_a1=f"p6_q{qg}_t"; st.radio(f"Q{qg} Tone", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a1, index=None); qg+=1
+                k_a2=f"p6_q{qg}_f"; st.radio(f"Q{qg} Flow", ["1","2","3","4","잘 모르겠음"], horizontal=True, key=k_a2, index=None); qg+=1
                 st.text_area(f"Q{qg} Sum", key=f"p6_q{qg}"); qg+=1
                 st.radio(f"Set {s} 확신도", ["확신","애매","모름"], horizontal=True, key=f"p6_set{s}_conf", index=None); st.markdown("---")
         elif info['type'] == 'simple_subj':
@@ -684,18 +711,40 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
             elif info['type'] == 'part6_sets':
                 c1=st.session_state.get("p6_set1_conf"); c2=st.session_state.get("p6_set2_conf"); c3=st.session_state.get("p6_set3_conf")
                 if not(c1 and c2 and c3): is_valid=False
-                for i in range(1,5):
-                    a=st.session_state.get(f"p6_q{i}")
-                    if not a: is_valid=False
-                    final_data.append({'q_id':str(i),'ans':a,'conf':c1})
-                for i in range(5,9):
-                    a=st.session_state.get(f"p6_q{i}")
-                    if not a: is_valid=False
-                    final_data.append({'q_id':str(i),'ans':a,'conf':c2})
-                for i in range(9,13):
-                    a=st.session_state.get(f"p6_q{i}")
-                    if not a: is_valid=False
-                    final_data.append({'q_id':str(i),'ans':a,'conf':c3})
+                # Logic: We must iterate all questions to gather answers.
+                # Note: Part 6 uses specific keys p6_q{num}.
+                # The loop structure must match the UI creation.
+                qg = 1
+                for s in range(1,4):
+                    # Q1: Keyword (Text)
+                    k_kw = f"p6_q{qg}"; a_kw = st.session_state.get(k_kw)
+                    if not a_kw: is_valid = False
+                    final_data.append({'q_id':str(qg),'ans':a_kw,'conf':eval(f"c{s}")})
+                    qg += 1
+                    
+                    # Q2: Tone (Radio)
+                    k_t = f"p6_q{qg}_t"; a_t = st.session_state.get(k_t)
+                    if a_t == "잘 모르겠음": 
+                        # Can't change c{s} variable directly for previous questions, but user intention is 'Unknown'.
+                        # However, Part 6 has 1 confidence per Set. 
+                        # We will just accept the answer.
+                        pass
+                    if not a_t: is_valid = False
+                    final_data.append({'q_id':str(qg),'ans':a_t,'conf':eval(f"c{s}")})
+                    qg += 1
+                    
+                    # Q3: Flow (Radio)
+                    k_f = f"p6_q{qg}_f"; a_f = st.session_state.get(k_f)
+                    if not a_f: is_valid = False
+                    final_data.append({'q_id':str(qg),'ans':a_f,'conf':eval(f"c{s}")})
+                    qg += 1
+                    
+                    # Q4: Sum (Text)
+                    k_s = f"p6_q{qg}"; a_s = st.session_state.get(k_s)
+                    if not a_s: is_valid = False
+                    final_data.append({'q_id':str(qg),'ans':a_s,'conf':eval(f"c{s}")})
+                    qg += 1
+
             elif info['type'] == 'simple_subj':
                 for i in range(1,6):
                     a=st.session_state.get(f"p8_q{i}"); c=st.session_state.get(f"p8_c{i}")
