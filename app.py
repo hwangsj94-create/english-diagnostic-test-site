@@ -166,7 +166,7 @@ def calculate_results(email):
 # 3. 전문가 분석 텍스트 생성기
 # ==========================================
 
-# (1) [수정] 학습 단계별 성취도 및 병목 구간 진단
+# (1) [수정] 학습 단계별 성취도 및 병목 구간 진단 (함수명 변경됨: generate_stage_diagnosis)
 def generate_stage_diagnosis(df_results, student_name):
     part_scores = df_results.groupby('part')['is_correct'].mean() * 100
     all_parts = pd.Series(0, index=range(1, 9))
@@ -185,17 +185,17 @@ def generate_stage_diagnosis(df_results, student_name):
     if avg_basic < 60:
         current_stage = "1단계: 기초 체력 미달"
         diagnosis_title = "기초 재건 필요 (Foundation Weakness)"
-        analysis_text += f"진단 결과, 영어 학습의 뿌리가 되는 **'기초 체력(Part 1~3)'** 단계에서부터 흔들리고 있습니다. 해당 구간의 평균 점수는 **{avg_basic}점**입니다. 이는 어휘, 문법, 구문 해석 능력이 고등 과정을 소화하기에 역부족임을 의미합니다. 지금 선행 진도를 나가는 것은 밑 빠진 독에 물 붓기와 같습니다. 중등 과정의 핵심 구멍을 메우는 **'기초 재건'**이 최우선 과제입니다."
+        analysis_text += f"진단 결과, 영어 학습의 뿌리가 되는 **'기초 체력(Part 1, 2, 3)'** 단계에서부터 흔들리고 있습니다. 해당 구간의 평균 점수는 **{avg_basic}점**입니다. 이는 어휘, 문법, 구문 해석 능력이 고등 과정을 소화하기에 역부족임을 의미합니다. 지금 선행 진도를 나가는 것은 밑 빠진 독에 물 붓기와 같습니다. 중등 과정의 핵심 구멍을 메우는 **'기초 재건'**이 최우선 과제입니다."
     
     elif avg_inter < 60:
         current_stage = "2단계: 중위권 도약 정체"
         diagnosis_title = "문해력 및 연결성 부족 (Literacy Gap)"
-        analysis_text += f"기초 체력은 갖추었으나, 문장 간의 관계를 파악하고 글의 속뜻을 이해하는 **'중위권의 기본 소양(Part 4~5)'**에서 막혀 있습니다. 해당 구간 평균은 **{avg_inter}점**입니다. 해석은 되지만 '무슨 말인지 모르는' 상태가 지속되고 있습니다. 이 단계의 병목을 뚫지 못하면 열심히 공부해도 3~4등급 구간을 벗어나기 어렵습니다. 단순 번역을 멈추고 **'생각하며 읽는 힘'**을 길러야 합니다."
+        analysis_text += f"기초 체력은 갖추었으나, 문장 간의 관계를 파악하고 글의 속뜻을 이해하는 **'중위권의 기본 소양(Part 4, 5)'**에서 막혀 있습니다. 해당 구간 평균은 **{avg_inter}점**입니다. 해석은 되지만 '무슨 말인지 모르는' 상태가 지속되고 있습니다. 이 단계의 병목을 뚫지 못하면 열심히 공부해도 3~4등급 구간을 벗어나기 어렵습니다. 단순 번역을 멈추고 **'생각하며 읽는 힘'**을 길러야 합니다."
     
     elif avg_adv < 60:
         current_stage = "3단계: 상위권 진입 장벽"
         diagnosis_title = "실전 전략 부재 (Strategy Needed)"
-        analysis_text += f"기본기와 논리력은 우수하나, 숲을 보고 전략적으로 접근해야 하는 **'상위권으로 가는 문(Part 6~7)'** 앞에서 멈춰 섰습니다. 해당 구간 평균은 **{avg_adv}점**입니다. 글을 너무 정직하게만 읽거나, 유형별 풀이 전략 없이 덤비다가 시간 관리에 실패했을 가능성이 큽니다. 이제는 영어 실력이 아니라 **'시험 보는 기술(전략)'**을 장착해야 안정적인 1~2등급으로 도약할 수 있습니다."
+        analysis_text += f"기본기와 논리력은 우수하나, 숲을 보고 전략적으로 접근해야 하는 **'상위권으로 가는 문(Part 6, 7)'** 앞에서 멈춰 섰습니다. 해당 구간 평균은 **{avg_adv}점**입니다. 글을 너무 정직하게만 읽거나, 유형별 풀이 전략 없이 덤비다가 시간 관리에 실패했을 가능성이 큽니다. 이제는 영어 실력이 아니라 **'시험 보는 기술(전략)'**을 장착해야 안정적인 1~2등급으로 도약할 수 있습니다."
     
     else:
         total_avg = int(part_scores.loc[1:7].mean())
@@ -460,12 +460,20 @@ def generate_total_review(df_results, student_name):
 # [Helper] 약점 파트 계산 함수 (헤더용)
 def calculate_weak_parts(df_results):
     if df_results.empty: return []
-    part_scores = df_results.groupby('part')['is_correct'].mean() * 100
-    all_parts = pd.Series(0, index=range(1, 9))
-    part_scores = part_scores.combine_first(all_parts).sort_index()
-    valid_parts = part_scores.drop(8) # Part 8 제외
-    sorted_parts = valid_parts.sort_values(ascending=True)
-    return sorted_parts.index[:2].tolist()
+    # 실질 점수(Master ratio) 기준으로 약점 선정하도록 수정
+    real_scores = {}
+    for p in range(1, 9):
+        p_df = df_results[df_results['part'] == p]
+        if not p_df.empty:
+            master = len(p_df[p_df['quadrant'] == 'Master'])
+            real_scores[p] = (master / len(p_df)) * 100
+        else:
+            real_scores[p] = 0
+            
+    # Part 8 제외 및 정렬
+    if 8 in real_scores: del real_scores[8]
+    sorted_parts = sorted(real_scores.items(), key=lambda x: x[1]) # 오름차순
+    return [p[0] for p in sorted_parts[:2]]
 
 # ==========================================
 # 4. 리포트 UI
@@ -478,8 +486,8 @@ def show_report_dashboard(df_results, student_name):
         st.warning("분석할 데이터가 없습니다.")
         return
 
-    # Generate Content
-    stage_grade, stage_kw, stage_txt, summary_df = generate_grade_analysis(df_results, student_name)
+    # [수정] 올바른 함수 호출: generate_stage_diagnosis
+    stage_grade, stage_kw, stage_txt, summary_df = generate_stage_diagnosis(df_results, student_name)
     meta_txt, meta_df = generate_meta_analysis(df_results, student_name)
     part_overview_txt = generate_part_overview(df_results, student_name)
     det_dict = generate_part_specific_analysis(df_results, student_name)
@@ -490,7 +498,7 @@ def show_report_dashboard(df_results, student_name):
     correct_q = len(df_results[df_results['is_correct'] == True])
     score = int((correct_q / total_q) * 100) if total_q > 0 else 0
     
-    # Priority Calculation
+    # Priority Calculation (Real Score Base)
     weak_indices = calculate_weak_parts(df_results)
     if weak_indices:
         weak_names = [EXAM_STRUCTURE[p]['title'].split('.')[1].strip().split('(')[0] for p in weak_indices]
@@ -538,14 +546,19 @@ def show_report_dashboard(df_results, student_name):
     c_g1, c_g2 = st.columns([1, 1])
     with c_g1:
         st.subheader("3. Part 종합 총평")
-        part_stats = df_results.groupby('part')['is_correct'].mean() * 100
-        all_parts = pd.Series(0, index=range(1, 9))
-        part_stats = part_stats.combine_first(all_parts).sort_index()
+        # [수정] 그래프도 실질 점수(Real Score) 기준으로 변경
+        real_scores_list = []
+        for p in range(1, 9):
+            p_df = df_results[df_results['part'] == p]
+            if p_df.empty: val = 0
+            else: val = int((len(p_df[p_df['quadrant']=='Master']) / len(p_df))*100)
+            real_scores_list.append(val)
+            
         df_bar = pd.DataFrame({
             '영역': [EXAM_STRUCTURE[p]['title'].split('.')[1].strip() for p in range(1,9)],
-            '점수': part_stats.values
+            '실질 점수': real_scores_list
         })
-        fig_bar = px.bar(df_bar, x='영역', y='점수', text='점수', color='점수', color_continuous_scale='Blues', range_y=[0,100])
+        fig_bar = px.bar(df_bar, x='영역', y='실질 점수', text='실질 점수', color='실질 점수', color_continuous_scale='Blues', range_y=[0,100])
         fig_bar.update_traces(texttemplate='%{text:.0f}점', textposition='outside')
         st.plotly_chart(fig_bar, use_container_width=True)
     with c_g2:
@@ -718,81 +731,4 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                 if o1 == "잘 모르겠음": c1 = "모름"
                 if not(s1 and v1 and o1 and c1): is_valid=False
                 final_data.extend([{'q_id':'1_subj','ans':s1,'conf':c1},{'q_id':'1_verb','ans':v1,'conf':c1},{'q_id':'1_obj','ans':o1,'conf':c1}])
-                s2=st.session_state.get("p3_q2_subj"); v2=st.session_state.get("p3_q2_verb"); o2=st.session_state.get("p3_q2_obj"); c2=st.session_state.get("p3_c2")
-                if o2 == "잘 모르겠음": c2 = "모름"
-                if not(s2 and v2 and o2 and c2): is_valid=False
-                final_data.extend([{'q_id':'2_subj','ans':s2,'conf':c2},{'q_id':'2_verb','ans':v2,'conf':c2},{'q_id':'2_obj','ans':o2,'conf':c2}])
-                s3=st.session_state.get("p3_q3_subj"); o3=st.session_state.get("p3_q3_obj"); c3=st.session_state.get("p3_c3")
-                if o3 == "잘 모르겠음": c3 = "모름"
-                if not(s3 and o3 and c3): is_valid=False
-                final_data.extend([{'q_id':'3_subj','ans':s3,'conf':c3},{'q_id':'3_obj','ans':o3,'conf':c3}])
-                s4=st.session_state.get("p3_q4_subj"); v4=st.session_state.get("p3_q4_verb"); o4=st.session_state.get("p3_q4_obj"); c4=st.session_state.get("p3_c4")
-                if o4 == "잘 모르겠음": c4 = "모름"
-                if not(s4 and v4 and o4 and c4): is_valid=False
-                final_data.extend([{'q_id':'4_subj','ans':s4,'conf':c4},{'q_id':'4_verb','ans':v4,'conf':c4},{'q_id':'4_obj','ans':o4,'conf':c4}])
-                o5=st.session_state.get("p3_q5_obj"); t5=st.session_state.get("p3_q5_text"); c5=st.session_state.get("p3_c5")
-                if o5 == "잘 모르겠음": c5 = "모름"
-                if not(o5 and t5 and c5): is_valid=False
-                final_data.extend([{'q_id':'5_obj','ans':o5,'conf':c5},{'q_id':'5_text','ans':t5,'conf':c5}])
-            elif info['type'] == 'part4_special':
-                for i in range(1,6):
-                    a=st.session_state.get(f"p4_q{i}"); c=st.session_state.get(f"p4_c{i}")
-                    if a == "잘 모르겠음": c = "모름"
-                    if not a or not c: is_valid=False
-                    final_data.append({'q_id':str(i),'ans':a,'conf':c})
-            elif info['type'] == 'part5_special':
-                for i in [1,2,5]:
-                    ao=st.session_state.get(f"p5_q{i if i!=5 else 5}_obj"); at=st.session_state.get(f"p5_q{i if i!=5 else 5}_text"); c=st.session_state.get(f"p5_c{i if i!=5 else 5}")
-                    if ao == "잘 모르겠음": c = "모름"
-                    if not(ao and at and c): is_valid=False
-                    final_data.append({'q_id':f"{i}_obj",'ans':ao,'conf':c}); final_data.append({'q_id':f"{i}_text",'ans':at,'conf':c})
-                for i in [3,4]:
-                    at=st.session_state.get(f"p5_q{i}_text"); c=st.session_state.get(f"p5_c{i}")
-                    if not at or not c: is_valid=False
-                    final_data.append({'q_id':f"{i}_text",'ans':at,'conf':c})
-            elif info['type'] == 'part6_sets':
-                c1=st.session_state.get("p6_set1_conf"); c2=st.session_state.get("p6_set2_conf"); c3=st.session_state.get("p6_set3_conf")
-                if not(c1 and c2 and c3): is_valid=False
-                qg = 1
-                for s in range(1,4):
-                    k_kw = f"p6_q{qg}"; a_kw = st.session_state.get(k_kw)
-                    if not a_kw: is_valid = False
-                    final_data.append({'q_id':str(qg),'ans':a_kw,'conf':eval(f"c{s}")})
-                    qg += 1
-                    k_t = f"p6_q{qg}_t"; a_t = st.session_state.get(k_t)
-                    if a_t == "잘 모르겠음": pass 
-                    if not a_t: is_valid = False
-                    final_data.append({'q_id':str(qg),'ans':a_t,'conf':eval(f"c{s}")})
-                    qg += 1
-                    k_f = f"p6_q{qg}_f"; a_f = st.session_state.get(k_f)
-                    if not a_f: is_valid = False
-                    final_data.append({'q_id':str(qg),'ans':a_f,'conf':eval(f"c{s}")})
-                    qg += 1
-                    k_s = f"p6_q{qg}"; a_s = st.session_state.get(k_s)
-                    if not a_s: is_valid = False
-                    final_data.append({'q_id':str(qg),'ans':a_s,'conf':eval(f"c{s}")})
-                    qg += 1
-            elif info['type'] == 'simple_subj':
-                for i in range(1,6):
-                    a=st.session_state.get(f"p8_q{i}"); c=st.session_state.get(f"p8_c{i}")
-                    if not a or not c: is_valid=False
-                    final_data.append({'q_id':str(i),'ans':a,'conf':c})
-
-            if not is_valid:
-                st.error("⚠️ 모든 문항의 정답과 확신도를 입력해야 제출할 수 있습니다.")
-            else:
-                try:
-                    with st.spinner("저장 중..."):
-                        save_answers_bulk(st.session_state['user_email'], part, final_data)
-                        st.session_state['current_part'] += 1
-                        time.sleep(1)
-                        st.rerun()
-                except Exception as e: st.error(f"오류: {e}")
-
-else:
-    st.balloons()
-    try:
-        df_res = calculate_results(st.session_state['user_email'])
-        show_report_dashboard(df_res, st.session_state['user_name'])
-    except Exception as e: st.error(f"분석 중 오류 발생: {e}")
-    if st.button("처음으로"): st.session_state.clear(); st.rerun()
+                s2=st.session_state.get("p3_q2_subj"); v2=st.session_state.get
