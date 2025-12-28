@@ -308,6 +308,7 @@ def generate_part_specific_analysis(df_results, student_name):
         
         text = f"{title} 영역은 {intent}을(를) 진단하는 파트입니다. {student_name} 학생은 이 영역에서 {stat['score']}점을 받았습니다. {part_intro[p]} "
         
+        # 점수대별 멘트 생성 (No duplication)
         if stat['score'] >= 80:
             text += "분석 결과, 해당 영역에 대한 이해도가 매우 높습니다. 핵심 개념이 탄탄하게 잡혀있어 실전 문제에서도 흔들림이 없습니다. "
             if stat['lucky'] >= 30:
@@ -338,6 +339,11 @@ def generate_part_specific_analysis(df_results, student_name):
         elif p == 7: text += "유형별 접근 전략 없이 무작정 읽는 비효율적인 풀이 방식 때문입니다. Scanning과 Skimming 기술을 익혀야 합니다."
         elif p == 8: text += "눈으로 이해하는 것에 익숙해져, 직접 손으로 문장을 구성할 때 챙겨야 할 문법적 디테일을 놓치고 있기 때문입니다. 자가 첨삭 훈련이 필수입니다."
 
+        text += " 따라서 향후 학습은 "
+        if p <= 2: text += "무리한 문제 풀이보다는 기본 개념서와 어휘장을 통한 'Input' 학습 비중을 80% 이상으로 늘려야 합니다. 기초가 튼튼하지 않은 상태에서 쌓아 올린 점수는 모래성과 같습니다."
+        elif p <= 5: text += "감에 의존한 해석을 멈추고, 문장 성분을 표시하거나 연결 관계를 도식화하는 등 '손을 사용하는 분석 훈련'을 통해 정확성을 높여야 합니다."
+        else: text += "단순히 정답을 맞히는 것에 만족하지 말고, '왜 이것이 정답이고 나머지는 오답인지'를 설명할 수 있을 때까지 끈질기게 파고드는 오답 분석 습관을 길러야 합니다."
+
         detail_analysis_dict[p] = text
 
     return detail_analysis_dict
@@ -359,7 +365,16 @@ def generate_total_review(df_results, student_name):
     summary = f"**[진단 요약]**\n"
     summary += f"데이터 분석 결과, {student_name} 학생의 성적 향상을 가로막는 결정적인 병목 구간은 {', '.join(weak_titles)} 영역입니다. "
     summary += f"해당 영역들의 평균 정답률은 약 {avg_weak_score}%로, 전체 학습 균형을 무너뜨리는 주원인이 되고 있습니다. "
-    summary += "이러한 불균형을 해소하지 않고 무작정 진도만 나가는 것은 효율이 떨어집니다. 따라서 향후 학습 계획은 이 약점을 최우선으로 보완하는 방향으로 설계되어야 합니다.\n\n"
+    
+    delusion_cnt = 0
+    for p in weak_parts_indices:
+        delusion_cnt += df_results[df_results['part'] == p]['quadrant'].value_counts().get("Delusion", 0)
+        
+    if delusion_cnt > 0:
+        summary += f"특히 해당 파트에서 오답임에도 정답이라고 확신한 문항이 발견되었습니다. 이는 단순 실수가 아니라 개념의 오류가 뿌리 깊게 박혀 있음을 시사합니다. "
+    else:
+        summary += f"해당 파트에 대한 기초 개념 자체가 정립되지 않아 문제 접근 자체에 어려움을 겪고 있는 상태입니다. "
+    summary += "\n\n"
 
     summary += f"**[우선순위 로드맵]**\n"
     summary += f"성적 상승을 위해 다음 두 가지 학습 목표를 최우선으로 삼아야 합니다. "
@@ -532,10 +547,8 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
     st.title(info['title']); st.progress(part/8)
     if part == 8: st.error("⚠️ 서술형 주의: 마침표(.) 필수, 띄어쓰기 주의")
     
-    # Callback Logic (Removed from UI, handled in Submit)
-    
+    # Callback removal (handled in logic)
     with st.form(f"exam_{part}"):
-        # UI (No Callbacks)
         if info['type'] == 'simple_obj':
             for i in range(1, info['count']+1):
                 st.markdown(f"**문항 {i}**")
@@ -601,63 +614,49 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
             final_data = []
             is_valid = True
             
-            # Simple Obj
+            # Data Collection & Auto-fix for IDK
             if info['type'] == 'simple_obj':
                 for i in range(1, info['count']+1):
-                    a = st.session_state.get(f"p{part}_q{i}")
-                    c = st.session_state.get(f"p{part}_c{i}")
-                    if a == "잘 모르겠음": c = "모름" # [Auto-fix]
+                    a = st.session_state.get(f"p{part}_q{i}"); c = st.session_state.get(f"p{part}_c{i}")
+                    if a == "잘 모르겠음": c = "모름"
                     if not a: is_valid = False
                     final_data.append({'q_id':str(i), 'ans':a, 'conf':c})
-            
-            # Part 2
             elif info['type'] == 'part2_special':
                 for i in range(1,10):
-                    a = st.session_state.get(f"p2_q{i}")
-                    c = st.session_state.get(f"p2_c{i}")
-                    if a == "잘 모르겠음": c = "모름" # [Auto-fix]
+                    a = st.session_state.get(f"p2_q{i}"); c = st.session_state.get(f"p2_c{i}")
+                    if a == "잘 모르겠음": c = "모름"
                     if not a: is_valid = False
                     final_data.append({'q_id':str(i), 'ans':a, 'conf':c})
                 w = st.session_state.get("p2_q10_wrong"); o = st.session_state.get("p2_q10_correct"); c = st.session_state.get("p2_c10")
                 if not w or not o or not c: is_valid = False
                 final_data.append({'q_id':'10_wrong','ans':w,'conf':c}); final_data.append({'q_id':'10_correct','ans':o,'conf':c})
-            
-            # Part 3
             elif info['type'] == 'part3_special':
                 s1=st.session_state.get("p3_q1_subj"); v1=st.session_state.get("p3_q1_verb"); o1=st.session_state.get("p3_q1_obj"); c1=st.session_state.get("p3_c1")
                 if o1 == "잘 모르겠음": c1 = "모름"
                 if not(s1 and v1 and o1 and c1): is_valid=False
                 final_data.extend([{'q_id':'1_subj','ans':s1,'conf':c1},{'q_id':'1_verb','ans':v1,'conf':c1},{'q_id':'1_obj','ans':o1,'conf':c1}])
-                
                 s2=st.session_state.get("p3_q2_subj"); v2=st.session_state.get("p3_q2_verb"); o2=st.session_state.get("p3_q2_obj"); c2=st.session_state.get("p3_c2")
                 if o2 == "잘 모르겠음": c2 = "모름"
                 if not(s2 and v2 and o2 and c2): is_valid=False
                 final_data.extend([{'q_id':'2_subj','ans':s2,'conf':c2},{'q_id':'2_verb','ans':v2,'conf':c2},{'q_id':'2_obj','ans':o2,'conf':c2}])
-                
                 s3=st.session_state.get("p3_q3_subj"); o3=st.session_state.get("p3_q3_obj"); c3=st.session_state.get("p3_c3")
                 if o3 == "잘 모르겠음": c3 = "모름"
                 if not(s3 and o3 and c3): is_valid=False
                 final_data.extend([{'q_id':'3_subj','ans':s3,'conf':c3},{'q_id':'3_obj','ans':o3,'conf':c3}])
-                
                 s4=st.session_state.get("p3_q4_subj"); v4=st.session_state.get("p3_q4_verb"); o4=st.session_state.get("p3_q4_obj"); c4=st.session_state.get("p3_c4")
                 if o4 == "잘 모르겠음": c4 = "모름"
                 if not(s4 and v4 and o4 and c4): is_valid=False
                 final_data.extend([{'q_id':'4_subj','ans':s4,'conf':c4},{'q_id':'4_verb','ans':v4,'conf':c4},{'q_id':'4_obj','ans':o4,'conf':c4}])
-                
                 o5=st.session_state.get("p3_q5_obj"); t5=st.session_state.get("p3_q5_text"); c5=st.session_state.get("p3_c5")
                 if o5 == "잘 모르겠음": c5 = "모름"
                 if not(o5 and t5 and c5): is_valid=False
                 final_data.extend([{'q_id':'5_obj','ans':o5,'conf':c5},{'q_id':'5_text','ans':t5,'conf':c5}])
-            
-            # Part 4
             elif info['type'] == 'part4_special':
                 for i in range(1,6):
                     a=st.session_state.get(f"p4_q{i}"); c=st.session_state.get(f"p4_c{i}")
                     if a == "잘 모르겠음": c = "모름"
                     if not a or not c: is_valid=False
                     final_data.append({'q_id':str(i),'ans':a,'conf':c})
-            
-            # Part 5
             elif info['type'] == 'part5_special':
                 for i in [1,2,5]:
                     ao=st.session_state.get(f"p5_q{i if i!=5 else 5}_obj"); at=st.session_state.get(f"p5_q{i if i!=5 else 5}_text"); c=st.session_state.get(f"p5_c{i if i!=5 else 5}")
@@ -668,15 +667,9 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                     at=st.session_state.get(f"p5_q{i}_text"); c=st.session_state.get(f"p5_c{i}")
                     if not at or not c: is_valid=False
                     final_data.append({'q_id':f"{i}_text",'ans':at,'conf':c})
-            
-            # Part 6
             elif info['type'] == 'part6_sets':
                 c1=st.session_state.get("p6_set1_conf"); c2=st.session_state.get("p6_set2_conf"); c3=st.session_state.get("p6_set3_conf")
-                
-                # Logic: Check all answers. If any is "IDK", set conf to "Low" IF not set? 
-                # Actually, user sets conf per set. Just validate presence.
                 if not(c1 and c2 and c3): is_valid=False
-                
                 for i in range(1,5):
                     a=st.session_state.get(f"p6_q{i}")
                     if not a: is_valid=False
@@ -689,8 +682,6 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                     a=st.session_state.get(f"p6_q{i}")
                     if not a: is_valid=False
                     final_data.append({'q_id':str(i),'ans':a,'conf':c3})
-            
-            # Part 8 (Simple Subj)
             elif info['type'] == 'simple_subj':
                 for i in range(1,6):
                     a=st.session_state.get(f"p8_q{i}"); c=st.session_state.get(f"p8_c{i}")
