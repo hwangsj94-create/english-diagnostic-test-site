@@ -166,7 +166,7 @@ def calculate_results(email):
 # 3. 전문가 분석 텍스트 생성기
 # ==========================================
 
-# (1) [수정] 학습 단계별 성취도 및 병목 구간 진단 (함수명 변경됨: generate_stage_diagnosis)
+# (1) [수정] 학습 단계별 성취도 및 병목 구간 진단
 def generate_stage_diagnosis(df_results, student_name):
     part_scores = df_results.groupby('part')['is_correct'].mean() * 100
     all_parts = pd.Series(0, index=range(1, 9))
@@ -457,7 +457,7 @@ def generate_total_review(df_results, student_name):
 
     return summary
 
-# [Helper] 약점 파트 계산 함수 (헤더용)
+# [Helper] 약점 파트 계산 함수 (헤더용 - 실질 점수 기반)
 def calculate_weak_parts(df_results):
     if df_results.empty: return []
     # 실질 점수(Master ratio) 기준으로 약점 선정하도록 수정
@@ -486,7 +486,7 @@ def show_report_dashboard(df_results, student_name):
         st.warning("분석할 데이터가 없습니다.")
         return
 
-    # [수정] 올바른 함수 호출: generate_stage_diagnosis
+    # Generate Content
     stage_grade, stage_kw, stage_txt, summary_df = generate_stage_diagnosis(df_results, student_name)
     meta_txt, meta_df = generate_meta_analysis(df_results, student_name)
     part_overview_txt = generate_part_overview(df_results, student_name)
@@ -506,15 +506,12 @@ def show_report_dashboard(df_results, student_name):
     else:
         priority_text = "심화 학습 (All Pass)"
 
-    # Header
-    c1, c2, c3, c4 = st.columns([2, 2, 3, 2])
+    # Header - [1,1,2] 비율 적용
+    c1, c2, c3 = st.columns([1, 1, 2])
     c1.metric("종합 점수", f"{score}점 / 100점")
     c2.metric("맞힌 문제", f"{correct_q} / {total_q}")
     c3.metric("최우선 보완 영역", priority_text)
-    with c4:
-        st.button("🖨️ PDF로 저장", on_click=None, type="primary", key="print_btn")
-        if st.session_state.get("print_btn"):
-            st.components.v1.html("<script>window.print();</script>", height=0, width=0)
+    
     st.divider()
     
     # 1. 학습 단계별 성취도
@@ -546,7 +543,7 @@ def show_report_dashboard(df_results, student_name):
     c_g1, c_g2 = st.columns([1, 1])
     with c_g1:
         st.subheader("3. Part 종합 총평")
-        # [수정] 그래프도 실질 점수(Real Score) 기준으로 변경
+        # 그래프도 실질 점수(Real Score) 기준으로 변경
         real_scores_list = []
         for p in range(1, 9):
             p_df = df_results[df_results['part'] == p]
@@ -694,9 +691,15 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                 else: st.radio("정답", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a, index=None)
                 st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=k_c, index=None); st.markdown("---")
         elif info['type'] == 'part5_special':
-            for i in [1,2]: st.markdown(f"**문항 {i}**"); k_a=f"p5_q{i}_obj"; k_c=f"p5_c{i}"; st.radio("(1)", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a, index=None); st.text_input("(2)", key=f"p5_q{i}_text"); st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=k_c, index=None); st.markdown("---")
-            for i in [3,4]: st.markdown(f"**문항 {i}**"); k_c=f"p5_c{i}"; st.text_input("정답", key=f"p5_q{i}_text"); st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=k_c, index=None); st.markdown("---")
-            st.markdown("**문항 5**"); k_a="p5_q5_obj"; k_c="p5_c5"; st.radio("(1)", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a, index=None); st.text_input("(2)", key=f"p5_q5_text"); st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=k_c, index=None); st.markdown("---")
+            for i in [1,2,5]:
+                ao=st.session_state.get(f"p5_q{i if i!=5 else 5}_obj"); at=st.session_state.get(f"p5_q{i if i!=5 else 5}_text"); c=st.session_state.get(f"p5_c{i if i!=5 else 5}")
+                if ao == "잘 모르겠음": c = "모름"
+                if not(ao and at and c): is_valid=False
+                final_data.append({'q_id':f"{i}_obj",'ans':ao,'conf':c}); final_data.append({'q_id':f"{i}_text",'ans':at,'conf':c})
+            for i in [3,4]:
+                at=st.session_state.get(f"p5_q{i}_text"); c=st.session_state.get(f"p5_c{i}")
+                if not at or not c: is_valid=False
+                final_data.append({'q_id':f"{i}_text",'ans':at,'conf':c})
         elif info['type'] == 'part6_sets':
             qg=1
             for s in range(1,4):
@@ -773,6 +776,7 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                     final_data.append({'q_id':str(qg),'ans':a_kw,'conf':eval(f"c{s}")})
                     qg += 1
                     k_t = f"p6_q{qg}_t"; a_t = st.session_state.get(k_t)
+                    if a_t == "잘 모르겠음": pass 
                     if not a_t: is_valid = False
                     final_data.append({'q_id':str(qg),'ans':a_t,'conf':eval(f"c{s}")})
                     qg += 1
