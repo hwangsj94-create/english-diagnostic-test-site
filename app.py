@@ -115,7 +115,7 @@ def calculate_results(email):
         user_ans = str(row['answer']).strip()
         conf = row['confidence']
         
-        # '잘 모르겠음' 처리: 오답, 자신감 없음(Deficiency)
+        # '잘 모르겠음' 처리
         if user_ans == "잘 모르겠음":
             results.append({'part': int(part), 'q_id': q_id, 'is_correct': False, 'quadrant': "Deficiency"})
             continue
@@ -149,10 +149,10 @@ def calculate_results(email):
     return pd.DataFrame(results)
 
 # ==========================================
-# 3. 전문가 분석 텍스트 생성기 (Narrative Engine)
+# 3. 전문가 분석 텍스트 생성기
 # ==========================================
 
-# (1) 예상 등급 분석 (계단식 그룹 평균 로직 적용)
+# (1) 예상 등급 분석
 def generate_grade_analysis(df_results, student_name):
     part_scores = df_results.groupby('part')['is_correct'].mean() * 100
     all_parts = pd.Series(0, index=range(1, 9))
@@ -223,7 +223,7 @@ def generate_meta_analysis(df_results, student_name):
     text += "결론적으로, 점수 뒤에 숨겨진 이 메타인지 패턴을 이해해야 합니다. 모르는 건 죄가 아니지만, '안다고 착각하는 것'은 입시에서 가장 큰 적입니다. 이번 진단은 이 '착각'을 수치화하여 보여주었다는 점에서 큰 의미가 있습니다."
     return text
 
-# (3) Part 종합 총평 (6개 세부 그룹, 70/50 기준, 동적 마무리)
+# (3) Part 종합 총평
 def generate_part_overview(df_results, student_name):
     part_scores = df_results.groupby('part')['is_correct'].mean() * 100
     all_parts = pd.Series(0, index=range(1, 9))
@@ -271,7 +271,7 @@ def generate_part_overview(df_results, student_name):
 
     return text
 
-# (4) 파트별 상세 (300자 이상, 점수/메타인지 반영)
+# (4) 파트별 상세
 def generate_part_specific_analysis(df_results, student_name):
     part_stats = {}
     for p in range(1, 9):
@@ -347,13 +347,12 @@ def generate_part_specific_analysis(df_results, student_name):
 
     return detail_analysis_dict
 
-# (5) 종합 평가 및 솔루션 (Part 8 제외 로직)
+# (5) 종합 평가 및 솔루션
 def generate_total_review(df_results, student_name):
     part_scores = df_results.groupby('part')['is_correct'].mean() * 100
     all_parts = pd.Series(0, index=range(1, 9))
     part_scores = part_scores.combine_first(all_parts).sort_index()
     
-    # Part 8 제외하고 하위 2개 파트 선정
     valid_parts = part_scores.drop(8) 
     sorted_parts = valid_parts.sort_values(ascending=True)
     weak_parts_indices = sorted_parts.index[:2].tolist()
@@ -546,8 +545,6 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
     st.title(info['title']); st.progress(part/8)
     if part == 8: st.error("⚠️ 서술형 주의: 마침표(.) 필수, 띄어쓰기 주의")
     
-    # Callback logic (Removed to fix form error)
-    
     with st.form(f"exam_{part}"):
         if info['type'] == 'simple_obj':
             for i in range(1, info['count']+1):
@@ -603,7 +600,8 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
         elif info['type'] == 'part6_sets':
             qg=1
             for s in range(1,4):
-                st.markdown(f"### [Set {s}]"); st.text_input(f"Q{qg} Kw", key=f"p6_q{qg}"); k_a1=f"p6_q{qg}"; st.radio(f"Q{qg} Tone", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a1, index=None); qg+=1
+                st.markdown(f"### [Set {s}]"); st.text_input(f"Q{qg} Kw", key=f"p6_q{qg}"); qg+=1
+                k_a1=f"p6_q{qg}"; st.radio(f"Q{qg} Tone", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a1, index=None); qg+=1
                 k_a2=f"p6_q{qg}"; st.radio(f"Q{qg} Flow", ["1","2","3","4","잘 모르겠음"], horizontal=True, key=k_a2, index=None); qg+=1
                 st.text_area(f"Q{qg} Sum", key=f"p6_q{qg}"); qg+=1
                 st.radio(f"Set {s} 확신도", ["확신","애매","모름"], horizontal=True, key=f"p6_set{s}_conf", index=None); st.markdown("---")
@@ -614,7 +612,6 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
             final_data = []
             is_valid = True
             
-            # Simple Obj
             if info['type'] == 'simple_obj':
                 for i in range(1, info['count']+1):
                     a = st.session_state.get(f"p{part}_q{i}"); c = st.session_state.get(f"p{part}_c{i}")
@@ -635,22 +632,18 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                 if o1 == "잘 모르겠음": c1 = "모름"
                 if not(s1 and v1 and o1 and c1): is_valid=False
                 final_data.extend([{'q_id':'1_subj','ans':s1,'conf':c1},{'q_id':'1_verb','ans':v1,'conf':c1},{'q_id':'1_obj','ans':o1,'conf':c1}])
-                
                 s2=st.session_state.get("p3_q2_subj"); v2=st.session_state.get("p3_q2_verb"); o2=st.session_state.get("p3_q2_obj"); c2=st.session_state.get("p3_c2")
                 if o2 == "잘 모르겠음": c2 = "모름"
                 if not(s2 and v2 and o2 and c2): is_valid=False
                 final_data.extend([{'q_id':'2_subj','ans':s2,'conf':c2},{'q_id':'2_verb','ans':v2,'conf':c2},{'q_id':'2_obj','ans':o2,'conf':c2}])
-                
                 s3=st.session_state.get("p3_q3_subj"); o3=st.session_state.get("p3_q3_obj"); c3=st.session_state.get("p3_c3")
                 if o3 == "잘 모르겠음": c3 = "모름"
                 if not(s3 and o3 and c3): is_valid=False
                 final_data.extend([{'q_id':'3_subj','ans':s3,'conf':c3},{'q_id':'3_obj','ans':o3,'conf':c3}])
-                
                 s4=st.session_state.get("p3_q4_subj"); v4=st.session_state.get("p3_q4_verb"); o4=st.session_state.get("p3_q4_obj"); c4=st.session_state.get("p3_c4")
                 if o4 == "잘 모르겠음": c4 = "모름"
                 if not(s4 and v4 and o4 and c4): is_valid=False
                 final_data.extend([{'q_id':'4_subj','ans':s4,'conf':c4},{'q_id':'4_verb','ans':v4,'conf':c4},{'q_id':'4_obj','ans':o4,'conf':c4}])
-                
                 o5=st.session_state.get("p3_q5_obj"); t5=st.session_state.get("p3_q5_text"); c5=st.session_state.get("p3_c5")
                 if o5 == "잘 모르겠음": c5 = "모름"
                 if not(o5 and t5 and c5): is_valid=False
