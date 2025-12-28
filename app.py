@@ -166,19 +166,20 @@ def calculate_results(email):
 # 3. 전문가 분석 텍스트 생성기
 # ==========================================
 
-# (1) 예상 등급 분석 (계단식 검증 + 표 생성)
+# (1) 예상 등급 분석 (계단식 검증, .loc 수정 완료)
 def generate_grade_analysis(df_results, student_name):
     part_scores = df_results.groupby('part')['is_correct'].mean() * 100
     all_parts = pd.Series(0, index=range(1, 9))
     part_scores = part_scores.combine_first(all_parts).sort_index()
 
-    avg_basic = int(part_scores[1:4].mean())
-    avg_inter = int(part_scores[4:6].mean())
-    avg_adv = int(part_scores[6:8].mean())
+    # [수정] .loc을 사용하여 인덱스 라벨(1,2,3)을 정확히 지정
+    avg_basic = int(part_scores.loc[1:3].mean()) 
+    avg_inter = int(part_scores.loc[4:5].mean())
+    avg_adv = int(part_scores.loc[6:7].mean())
 
     predicted_grade = ""
     grade_keyword = ""
-    analysis_text = f"{student_name} 학생의 진단 결과를 바탕으로 분석한 예상 등급과 그에 따른 상세 근거입니다. 이번 진단은 '기초 체력(Part 1, 2, 3)', '중위권의 기본 소양(Part 4, 5)', '상위권으로 가는 문(Part 6, 7)' 단계를 순차적으로 통과할 수 있는지를 확인하는 계단식 검증 방식을 따릅니다. "
+    analysis_text = f"{student_name} 학생의 진단 결과를 바탕으로 분석한 예상 등급과 그에 따른 상세 근거입니다. 이번 진단은 기초(Part 1, 2, 3), 중위권 소양(Part 4, 5), 상위권 관문(Part 6, 7) 단계를 순차적으로 통과할 수 있는지를 확인하는 계단식 검증 방식을 따릅니다. "
 
     if avg_basic < 60:
         predicted_grade = "5등급 이하"
@@ -196,7 +197,7 @@ def generate_grade_analysis(df_results, student_name):
         analysis_text += f"기본기와 논리력은 훌륭합니다. 하지만 **'상위권으로 가는 문'** 앞에서 멈춰 섰습니다. Part 6, 7 점수가 낮은 것은 글을 너무 정직하게만 읽거나, 유형별 풀이 전략 없이 덤비다가 시간 관리에 실패했기 때문일 가능성이 큽니다. 이제는 영어 실력이 아니라 **'시험 보는 기술(전략)'**을 장착해야 안정적인 1등급에서 2등급으로 도약할 수 있습니다."
     
     else:
-        total_avg = int(part_scores[1:8].mean())
+        total_avg = int(part_scores.loc[1:7].mean()) # P8 제외
         if total_avg >= 90:
             predicted_grade = "1등급 - 높은 2등급"
             grade_keyword = "완성형 인재 (Masterpiece)"
@@ -206,7 +207,7 @@ def generate_grade_analysis(df_results, student_name):
             grade_keyword = "안정적 상위권 (Solid Top)"
             analysis_text += f"전 영역에서 고르게 준수한 성적을 거두었습니다. 큰 약점이 없는 육각형 인재에 가깝습니다. 다만 확실한 1등급으로 굳히기 위해서는 '중상위'에 머물러 있는 파트들을 '최상위'로 끌어올리는 정밀 튜닝이 필요합니다."
 
-    # 단계별 점수 요약 테이블 데이터 생성
+    # 단계별 점수 요약 테이블
     summary_df = pd.DataFrame({
         "단계 (Groups)": ["1. 기초 체력 (P1~3)", "2. 중위권 소양 (P4~5)", "3. 상위권 관문 (P6~7)"],
         "내용": ["어휘 / 어법 / 구문 해석", "문해력 / 문장 연계", "지문 이해 / 문제 풀이"],
@@ -276,47 +277,56 @@ def generate_meta_analysis(df_results, student_name):
     
     return text, pd.DataFrame(part_meta_list)
 
-# (3) Part 종합 총평 (실질 점수 기반)
+# (3) Part 종합 총평 (6개 세부 그룹, 70/50 기준)
 def generate_part_overview(df_results, student_name):
-    real_scores = {}
-    for p in range(1, 9):
-        p_df = df_results[df_results['part'] == p]
-        if p_df.empty:
-            real_scores[p] = 0
+    part_scores = df_results.groupby('part')['is_correct'].mean() * 100
+    all_parts = pd.Series(0, index=range(1, 9))
+    part_scores = part_scores.combine_first(all_parts).sort_index()
+    
+    # .loc 사용
+    groups = {
+        "기초 체력 (Part 1)": part_scores[1],
+        "문장 구조 분석 (Part 2, 3)": part_scores.loc[2:3].mean(),
+        "문해력 (Part 4)": part_scores[4],
+        "지문 이해력 (Part 5, 6)": part_scores.loc[5:6].mean(),
+        "실전 응용력 (Part 7)": part_scores[7],
+        "서술형 영작 (Part 8)": part_scores[8]
+    }
+    
+    text = f"학생의 8개 파트 성취도를 정밀 분석하여 '기초 체력'부터 '서술형 영작'까지 6가지 핵심 역량으로 재구성했습니다. 이는 학생의 학습 상태를 입체적으로 보여주는 지표입니다.\n\n"
+    
+    group_scores = {}
+    for name, score in groups.items():
+        score = int(score)
+        group_scores[name] = score
+        text += f"**• {name}: {score}점** - "
+        if score >= 70:
+            text += "안정적인 성취도를 보이고 있습니다. 해당 영역의 핵심 개념이 잘 정립되어 있으며, 이를 실전에 적용하는 데 무리가 없습니다. "
+        elif score >= 50:
+            text += "평균적인 수준이나 다소 기복이 있습니다. 개념은 알고 있으나 응용력이 부족하거나, 특정 유형에서 약점을 보이고 있어 보완이 필요합니다. "
         else:
-            master_cnt = len(p_df[p_df['quadrant'] == 'Master'])
-            total_cnt = len(p_df)
-            real_scores[p] = int((master_cnt / total_cnt) * 100)
-            
-    avg_real = sum(real_scores.values()) / 8
-    text = f"{student_name} 학생의 전체 8개 파트 성취도를 단순 정답률이 아닌 **실질 점수(Real Score)**를 기준으로 분석했습니다. 전체 실질 평균은 **{int(avg_real)}점**입니다.\n\n"
+            text += "학습 결손이 심각한 상태입니다. 해당 영역에 대한 기초 개념이 부재하여 문제 접근 자체가 어렵습니다. 최우선적으로 복구가 필요한 구간입니다. "
+        text += "\n"
+
+    max_score = max(group_scores.values())
+    min_score = min(group_scores.values())
+    best_area = max(group_scores, key=group_scores.get)
+    worst_area = min(group_scores, key=group_scores.get)
+    gap = max_score - min_score
     
-    sorted_scores = sorted(real_scores.items(), key=lambda x: x[1], reverse=True)
-    best_p, best_s = sorted_scores[0]
-    worst_p, worst_s = sorted_scores[-1]
-    
-    text += f"가장 견고한 실력을 보여준 영역은 **{EXAM_STRUCTURE[best_p]['title'].split('.')[1].strip()} ({best_s}점)**입니다. 이 영역은 운이나 감이 아니라 온전히 본인의 실력으로 점수를 만들어내고 있어, 향후 학습의 든든한 버팀목이 될 것입니다. "
-    text += f"\n\n반면, 가장 취약한 고리는 **{EXAM_STRUCTURE[worst_p]['title'].split('.')[1].strip()} ({worst_s}점)**입니다. "
-    
-    if worst_s < 40:
-        text += "현재 실질 점수가 40점 미만으로, 해당 영역에 대한 개념과 기초가 사실상 백지 상태에 가깝습니다. 다른 영역의 학습을 잠시 미루더라도 이 부분에 대한 긴급한 보수 공사가 필요합니다. "
-    elif worst_s < 60:
-        text += "기본적인 개념은 알고 있으나 확신을 갖고 문제를 해결하지 못하고 있습니다. 헷갈리는 개념을 명확히 정리하지 않으면 전체 성적의 발목을 잡는 병목 구간이 될 것입니다. "
-    else:
-        text += "전반적으로 우수하나 다른 영역에 비해 상대적으로 자신감이 부족한 상태입니다. 실전 훈련을 통해 확신도를 높이는 전략이 필요합니다. "
-        
-    gap = best_s - worst_s
-    text += "\n\n**[종합 제언]**\n"
-    if avg_real >= 80 and gap < 20:
-        text += "전 영역에서 실질 점수가 고르게 높습니다. '육각형 인재'의 전형입니다. 지금의 밸런스를 유지하며 킬러 문항 대비에 집중한다면 최상위권 안착이 확실시됩니다."
+    text += "\n**[종합 분석]**\n"
+    if min_score >= 70:
+        text += f"전 영역에서 70점 이상의 고른 득점 분포를 보이며, 학습 밸런스가 매우 훌륭합니다. {student_name} 학생은 약점이 없는 '육각형 인재'에 가깝습니다. 지금의 균형을 유지하면서 킬러 문항에 대한 디테일만 다듬는다면 최상위권 안착이 확실시됩니다."
+    elif max_score < 50:
+        text += "현재 전반적인 영역에서 기초 학습이 시급한 상황입니다. 특정 파트의 문제가 아니라, 영어 학습 전반에 대한 리빌딩(Rebuilding)이 필요합니다. 조급해하지 말고 중등 기초 단어와 구문부터 차근차근 다시 쌓아 올린다면, 오히려 백지 상태에서 더 빠른 성장을 이뤄낼 수 있습니다."
     elif gap >= 40:
-        text += f"영역 간 편차가 매우 큽니다. 잘하는 것과 못하는 것의 차이가 극명하여 시험 난이도에 따라 성적이 널뛸 위험이 있습니다. 강점 강화보다는 약점인 **{EXAM_STRUCTURE[worst_p]['title'].split('.')[1].strip()}** 파트를 평균 수준으로 끌어올리는 '밸런스 패치'가 시급합니다."
+        text += f"영역 간 편차가 매우 큽니다. **'{best_area}'**에서는 뛰어난 재능을 보이지만, **'{worst_area}'**가 심각하게 발목을 잡고 있습니다. 잘하는 것에 안주하지 말고, 가장 취약한 '{worst_area}'를 집중적으로 공략하여 무너진 밸런스를 맞추는 것이 급선무입니다."
     else:
-        text += "전반적인 틀은 잡혀있으나, 아직 '확신'의 단계에 이르지 못한 영역들이 존재합니다. '왜 이것이 정답인지'를 설명할 수 있는 메타인지 학습을 통해 실질 점수의 밀도를 높여야 합니다."
+        text += f"전반적으로 무난한 성취를 보이고 있으나, **'{worst_area}'** 영역이 다소 아쉽습니다. 다른 영역의 준수한 실력이 점수로 연결되기 위해서는 이 병목 구간을 뚫어야 합니다. 해당 파트만 보완된다면 전체 등급이 한 단계 업그레이드될 것입니다."
 
     return text
 
-# (4) 파트별 정밀 분석 (3단 구성: 상태 정의 - 원인 분석 - 행동 지침)
+# (4) 파트별 상세 (300자 이상, 점수/메타인지 반영, 상태-원인-처방 구조)
 def generate_part_specific_analysis(df_results, student_name):
     part_stats = {}
     for p in range(1, 9):
@@ -327,102 +337,108 @@ def generate_part_specific_analysis(df_results, student_name):
         total = len(p_df)
         quads = p_df['quadrant'].value_counts()
         part_stats[p] = {
-            'raw_score': int((len(p_df[p_df['is_correct']==True]) / total) * 100),
-            'real_score': int((quads.get("Master", 0) / total) * 100)
+            'score': int(p_df['is_correct'].mean() * 100),
+            'master': (quads.get("Master", 0) / total) * 100,
+            'lucky': (quads.get("Lucky", 0) / total) * 100,
+            'delusion': (quads.get("Delusion", 0) / total) * 100
         }
 
     detail_analysis_dict = {}
     
-    # 3단 구성 멘트 생성 로직
-    def get_detailed_narrative(part, raw, real):
-        mid_min, high_min = PART_THRESHOLDS[part]
-        
-        # 1. 상태 정의 (Status) - 점수 & 메타인지 Matrix
-        status_txt = ""
-        gap = raw - real
-        
-        if real >= high_min: # 상위권
-            if gap < 10: status_txt = "표면 점수와 실질 점수가 모두 높은 **'진짜 실력자(Genuine High-Performer)'** 상태입니다. 운이 아니라 명확한 근거를 가지고 문제를 해결했습니다."
-            else: status_txt = "점수는 상위권이지만, 실질 점수와의 격차가 있는 **'불안한 상위권(Unstable Top)'**입니다. 감으로 맞힌 문제가 섞여 있어 난이도가 오르면 흔들릴 수 있습니다."
-        elif real >= mid_min: # 중위권
-            if gap < 15: status_txt = "기초는 잡혀있으나 응용력과 확신이 부족한 **'성장통(Growing Pain)'** 단계입니다. 개념은 알지만 실전 적용에서 망설임이 보입니다."
-            else: status_txt = "운 좋게 맞힌 문제들로 인해 점수가 부풀려진 **'착시 현상(Illusion)'** 상태입니다. 현재 점수를 본인의 실력으로 착각해서는 안 됩니다."
-        else: # 하위권
-            if raw < mid_min: status_txt = "학습 결손이 누적되어 문제 접근 자체가 어려운 **'기초 부족(Foundation Issue)'** 상태입니다. 솔직하게 모르는 것은 모른다고 인정하는 것이 시작입니다."
-            else: status_txt = "점수는 평균에 근접했으나, 알고 푼 문제는 거의 없는 **'위험한 모래성(Sandcastle)'**입니다. 기초가 없는데 요령으로만 풀고 있습니다."
-
-        # 2. 심층 원인 분석 (Diagnosis) - 파트별 특성 반영
-        diag_txt = ""
-        if part == 1: # 어휘
-            if real < mid_min: diag_txt = "단순히 머리가 나빠서가 아닙니다. 단어를 눈으로만 보고 문맥 속 쓰임새를 익히지 않는 '눈공부' 습관이 원인일 가능성이 큽니다."
-            elif real < high_min: diag_txt = "기본 단어는 알지만, 다의어나 파생어 등 단어의 확장이 이루어지지 않아 해석이 매끄럽지 않은 것입니다."
-            else: diag_txt = "단어의 표면적 의미를 넘어 뉘앙스까지 파악하는 감각이 탁월합니다. 다만 유의어 간의 미세한 차이에서 오는 혼동을 줄여야 합니다."
-        elif part == 2: # 어법
-            if real < mid_min: diag_txt = "문법 용어에 대한 거부감이나 기초 개념(주어/동사 찾기) 부재가 원인입니다. 규칙을 모른 채 게임을 하고 있는 셈입니다."
-            elif real < high_min: diag_txt = "개념은 들어봤으나, 문제 풀이 시 '감'에 의존하여 어색한 것을 찾는 습관이 남아있기 때문입니다."
-            else: diag_txt = "출제 의도를 정확히 간파하고 있습니다. 다만 복합적인 문법 사항이 얽힌 고난도 문제에서의 실수를 경계해야 합니다."
-        elif part == 3: # 구문
-            if real < mid_min: diag_txt = "단어만 연결해서 소설을 쓰는 '감독해'가 고착화되어 있습니다. 문장의 뼈대(구조)를 보는 눈이 트이지 않았기 때문입니다."
-            elif real < high_min: diag_txt = "짧은 문장은 해석하지만, 수식어가 붙어 길어지면 주어와 동사를 놓치는 '호흡의 문제'입니다."
-            else: diag_txt = "복잡한 문장도 구조적으로 분해하는 통찰력이 있습니다. 다만 예외적인 구문이나 도치 구문에서의 당황함만 줄이면 됩니다."
-        elif part == 4: # 문해력
-            if real < mid_min: diag_txt = "영어 실력 이전에, 텍스트 정보를 처리하고 요약하는 '언어적 사고력' 훈련이 부족한 것이 근본 원인입니다."
-            elif real < high_min: diag_txt = "해석은 했으나 '그래서 무슨 말이지?'라고 핵심을 놓치는 경우가 있습니다. 지엽적 정보에 매몰되었기 때문입니다."
-            else: diag_txt = "글의 이면적 의미와 필자의 의도를 읽어내는 센스가 훌륭합니다. 추상적 제재에 대한 배경지식만 더하면 됩니다."
-        elif part == 5: # 연결
-            if real < mid_min: diag_txt = "문장을 개별적으로만 볼 뿐, 앞뒤 문장이 어떻게 연결되는지 '논리적 고리'를 생각하지 않고 읽기 때문입니다."
-            elif real < high_min: diag_txt = "흐름은 따라가지만, 결정적인 단서(지시어, 연결사)를 놓쳐 정밀한 연결 관계 파악에 실패하곤 합니다."
-            else: diag_txt = "글의 논리적 전개를 추적하는 힘이 좋습니다. 다만 매력적인 오답 선지의 함정에 빠지지 않는 주의력이 요구됩니다."
-        elif part == 6: # 지문 이해
-            if real < mid_min: diag_txt = "긴 글을 읽는 호흡이 짧아, 앞부분 내용을 잊어버리고 다시 돌아가는 비효율적 독해 습관 때문입니다."
-            elif real < high_min: diag_txt = "세부 내용은 기억하지만, 글 전체를 관통하는 주제나 구조를 조망하는 '거시적 안목'이 부족합니다."
-            else: diag_txt = "나무가 아닌 숲을 보는 능력이 탁월합니다. 긴 지문도 두려움 없이 요리할 수 있는 기반이 마련되었습니다."
-        elif part == 7: # 전략
-            if real < mid_min: diag_txt = "유형별 접근법을 전혀 모른 채, 무작정 처음부터 끝까지 정직하게만 읽으려다 시간이 부족해지는 것입니다."
-            elif real < high_min: diag_txt = "전략은 알고 있으나 체화되지 않아, 실전에서 당황하면 다시 습관대로 해석에만 매달리기 때문입니다."
-            else: diag_txt = "출제자의 함정을 피하고 정답의 단서를 찾아내는 '문제 풀이 기술'을 잘 갖추고 있습니다."
-        elif part == 8: # 영작
-            if real < mid_min: diag_txt = "서술형에 대한 막연한 두려움 때문에 펜을 대지 못하거나, 한국어 어순대로 단어를 나열하는 콩글리시 습관 때문입니다."
-            elif real < high_min: diag_txt = "내용은 알지만 수일치, 시제, 관사 등 디테일한 문법 조건(Constraint)을 챙기지 못해 감점당하는 케이스입니다."
-            else: diag_txt = "문법적 제약을 지키며 정확한 문장을 구사합니다. 감점 없는 만점을 위한 1%의 디테일만 채우면 됩니다."
-
-        # 3. 행동 지침 (Action Item)
-        act_txt = ""
-        if real < mid_min: # 하위권 처방
-            if part == 1: act_txt = "하루 30개씩이라도 꾸준히 단어를 암기하는 습관부터 만드세요. 그것 없이는 아무것도 시작할 수 없습니다."
-            elif part == 2: act_txt = "문법 문제 풀이를 멈추고, 가장 쉬운 입문 강의를 통해 품사와 문장 성분의 개념부터 다시 잡으세요."
-            elif part == 3: act_txt = "모든 문장에 주어(S)와 동사(V)를 표시하는 연습부터 하세요. 해석이 안 되면 해설지를 보고 구조를 대조해봐야 합니다."
-            elif part == 4: act_txt = "영어 지문보다 한글 해설지를 먼저 읽고 내용을 요약해보는 '언어 논리 훈련'이 선행되어야 합니다."
-            elif part == 5: act_txt = "접속사가 나오면 무조건 동그라미를 치고, 앞뒤 문장이 순접인지 역접인지 따져보는 습관을 들이세요."
-            elif part == 6: act_txt = "문단별로 핵심 내용을 한글로 메모하며 읽으세요. 기억력에 의존하지 말고 손을 써야 합니다."
-            elif part == 7: act_txt = "유형별 풀이 공식(순서 배열, 삽입 등)을 먼저 익히고, 이를 적용해보는 기본적인 연습부터 시작하세요."
-            elif part == 8: act_txt = "문장 전체를 쓰려 하지 말고, 주어와 동사 뼈대만이라도 정확히 쓰는 부분 영작 훈련으로 자신감을 키우세요."
-        elif real < high_min: # 중위권 처방
-            if part == 1: act_txt = "예문을 통해 단어가 문장 속에서 어떻게 쓰이는지 확인하는 'Context 학습'으로 전환하세요."
-            elif part == 2: act_txt = "문제를 풀 때 정답의 근거를 문법 용어로 설명해보는 '티칭' 훈련을 통해 개념을 단단히 굳히세요."
-            elif part == 3: act_txt = "의미 단위로 끊어 읽는 '청킹(Chunking)' 연습을 하세요. 길고 복잡한 문장만 따로 모아 분석하는 것도 좋습니다."
-            elif part == 4: act_txt = "지문을 다 읽고 보지 않은 상태에서 핵심 내용을 한 문장으로 요약해보는 '재구성 훈련'을 추천합니다."
-            elif part == 5: act_txt = "지시어(This, It)가 구체적으로 무엇을 가리키는지 찾아 화살표로 연결하는 연습을 집요하게 해야 합니다."
-            elif part == 6: act_txt = "첫 문장과 마지막 문장에 집중하여 글의 전체 흐름을 예측하고 확인하는 전략적 독해를 시도하세요."
-            elif part == 7: act_txt = "지문의 어디를 힘주어 읽고 어디를 흘려 읽을지 결정하는 '강약 조절(Scanning)' 훈련이 필요합니다."
-            elif part == 8: act_txt = "직접 쓴 답안을 선생님의 눈으로 꼼꼼하게 다시 보는 '자가 첨삭' 훈련을 통해 실수를 스스로 잡아내세요."
-        else: # 상위권 처방
-            act_txt = "지금의 감각을 유지하되, 오답 노트 작성을 통해 아주 사소한 실수의 가능성까지 차단하는 '무결점'을 목표로 하세요."
-
-        return f"{status_txt}\n\n{diag_txt}\n\n💡 **[Solution]** {act_txt}"
+    part_intro = {
+        1: "어휘력은 단순 암기가 아니라 문맥 속에서 단어의 의미를 파악하는 능력입니다.",
+        2: "어법 지식은 문장을 올바르게 구성하고 해석하는 규칙을 이해하는 것입니다.",
+        3: "구문 해석력은 문장의 뼈대(주어/동사)를 찾아 정확한 의미를 도출하는 핵심 역량입니다.",
+        4: "문해력은 번역된 문장의 속뜻을 이해하고 요지를 파악하는 비문학적 사고력입니다.",
+        5: "문장 연계 능력은 접속사와 지시어를 통해 글의 논리적 흐름을 추적하는 힘입니다.",
+        6: "지문 이해 능력은 세부 정보에 매몰되지 않고 글의 전체 구조를 조망하는 능력입니다.",
+        7: "문제 풀이 능력은 유형별 특성에 맞춰 효율적으로 정답에 접근하는 전략입니다.",
+        8: "서술형 영작은 문법 지식을 바탕으로 조건에 맞는 문장을 완벽하게 구현하는 능력입니다."
+    }
 
     for p in range(1, 9):
         stat = part_stats[p]
-        raw = stat['raw_score']
-        real = stat['real_score']
         title = EXAM_STRUCTURE[p]['title']
         intent = EXAM_STRUCTURE[p]['intent']
         
-        text = f"**{title}**\n"
-        text += f"이 영역은 **{intent}**을(를) 확인하는 파트입니다.\n"
-        text += f"• **표면 점수:** {raw}점 / **실질 점수:** {real}점\n\n"
-        text += get_detailed_narrative(p, raw, real)
+        # 실질 점수(득점 순도 반영) 계산
+        raw_score = stat['score']
+        real_score = int(stat['master']) 
+        gap = raw_score - real_score
         
+        text = f"{title} 영역은 {intent}을(를) 진단하는 파트입니다.\n\n"
+        
+        # 점수 분석 멘트
+        text += f"📌 **[점수 분석]**\n"
+        text += f"{student_name} 학생은 이 영역에서 **{raw_score}점**을 받았습니다. "
+        
+        if gap > 15:
+            text += f"하지만 득점 순도(운을 제외한 진짜 실력)를 고려할 때, 현재의 **실질적인 실력은 {real_score}점**으로 간주해야 합니다. "
+            text += f"약 {gap}점의 점수 거품이 끼어 있어, 시험 난이도가 오르면 점수가 하락할 위험이 매우 높습니다. "
+        elif gap > 0:
+            text += f"실질적인 실력 점수는 **{real_score}점**입니다. 확신 없이 맞힌 문제가 일부 있어, 이를 온전한 내 실력으로 만들기 위한 복습이 필요합니다. "
+        else:
+            text += f"득점 순도가 100%에 가까워, 거품 없이 오직 실력으로만 획득한 **알짜배기 점수**입니다. "
+            
+        text += "\n\n📌 **[상세 진단 및 처방]**\n"
+        
+        # 점수대별(실질점수 기준) 상세 멘트 생성 함수
+        def get_narrative(part, real_score):
+            mid_min, high_min = PART_THRESHOLDS[part]
+            
+            if real_score >= high_min: # 상위권
+                status_txt = "표면 점수와 실질 점수가 모두 높은 **'진짜 실력자(Genuine High-Performer)'** 상태입니다. 운이 아니라 명확한 근거를 가지고 문제를 해결했습니다."
+                diag_txt = "출제자의 의도를 정확히 파악하고 있으며, 개념의 흔들림이 거의 없습니다."
+                act_txt = "지금의 감각을 유지하되, 오답 노트 작성을 통해 아주 사소한 실수의 가능성까지 차단하는 '무결점'을 목표로 하세요."
+                
+                # 파트별 상위권 특화 멘트
+                if part==1: diag_txt += " 유의어와 반의어 확장 학습으로 어휘의 깊이를 더하세요."
+                elif part==2: diag_txt += " 서술형 영작으로 연결하는 응용 훈련만 더하면 됩니다."
+                elif part==8: diag_txt += " 감점 없는 만점을 목표로 디테일을 챙기세요."
+
+            elif real_score >= mid_min: # 중위권
+                status_txt = "기초는 잡혀있으나 응용력과 확신이 부족한 **'성장통(Growing Pain)'** 단계입니다. 개념은 알지만 실전 적용에서 망설임이 보입니다."
+                
+                if part == 1: 
+                    diag_txt = "기본 단어는 알지만 파생어나 다의어에서 막힙니다."; act_txt = "예문과 함께 단어를 익히는 Context 학습이 필요합니다."
+                elif part == 2:
+                    diag_txt = "개념은 들어봤으나 실전 적용에서 헷갈려합니다."; act_txt = "정답의 근거를 문법 용어로 설명해보는 '티칭' 훈련을 하세요."
+                elif part == 3:
+                    diag_txt = "짧은 문장은 되지만 길어지면 구조를 놓칩니다."; act_txt = "의미 단위로 끊어 읽는 '청킹(Chunking)' 연습을 추천합니다."
+                elif part == 4:
+                    diag_txt = "해석은 했으나 '그래서 무슨 말이지?'라고 핵심을 놓칩니다."; act_txt = "지문을 다 읽고 핵심 내용을 한 문장으로 요약해보는 연습을 하세요."
+                elif part == 5:
+                    diag_txt = "문장을 따로따로 읽는 경향이 있습니다."; act_txt = "지시어(This, It)가 무엇을 가리키는지 찾아 연결하는 연습을 하세요."
+                elif part == 6:
+                    diag_txt = "세부 내용에 매몰되어 전체 주제를 놓칩니다."; act_txt = "첫 문장과 마지막 문장에 집중하여 대의를 파악하는 훈련이 필요합니다."
+                elif part == 7:
+                    diag_txt = "유형별 접근법 없이 무작정 읽어서 시간이 부족합니다."; act_txt = "지문의 강약 조절(Scanning)과 풀이 스킬을 익혀야 합니다."
+                elif part == 8:
+                    diag_txt = "내용은 아는데 사소한 문법 실수로 감점당합니다."; act_txt = "직접 쓴 답안을 선생님의 눈으로 꼼꼼하게 자가 첨삭해보세요."
+
+            else: # 하위권
+                status_txt = "학습 결손이 누적되어 문제 접근 자체가 어려운 **'기초 부족(Foundation Issue)'** 상태입니다. 솔직하게 모르는 것은 모른다고 인정하는 것이 시작입니다."
+                
+                if part == 1:
+                    diag_txt = "어휘량이 절대적으로 부족하여 독해 자체가 불가능합니다."; act_txt = "하루 30개씩이라도 꾸준히 단어를 암기하는 습관이 생명줄입니다."
+                elif part == 2:
+                    diag_txt = "문법 용어에 대한 거부감이 있거나 기초 개념이 없습니다."; act_txt = "가장 쉬운 입문용 강의를 통해 품사와 문장 성분부터 다시 잡으세요."
+                elif part == 3:
+                    diag_txt = "단어만 연결해서 소설을 쓰고 있습니다."; act_txt = "모든 문장에 주어(S)와 동사(V)를 표시하는 연습부터 시작하세요."
+                elif part == 4:
+                    diag_txt = "텍스트 정보를 처리하는 능력이 부족합니다."; act_txt = "영어 지문보다 한글 해설지를 먼저 읽고 내용을 요약해보는 훈련이 필요합니다."
+                elif part == 5:
+                    diag_txt = "글의 흐름을 전혀 타지 못하고 있습니다."; act_txt = "접속사가 나오면 동그라미를 치고, 앞뒤 관계를 따져보는 습관을 들이세요."
+                elif part == 6:
+                    diag_txt = "긴 글을 읽는 호흡이 너무 짧습니다."; act_txt = "문단별로 핵심 키워드를 메모하며 읽는 습관을 들이세요."
+                elif part == 7:
+                    diag_txt = "문제 풀이 경험이 전무합니다."; act_txt = "각 유형의 특징과 풀이 공식을 익히고, 이를 적용해보는 연습부터 하세요."
+                elif part == 8:
+                    diag_txt = "서술형에 대한 두려움으로 손도 대지 못합니다."; act_txt = "문장 전체를 쓰려 하지 말고, 주어와 동사 뼈대만이라도 쓰는 훈련을 하세요."
+
+            return f"{status_txt}\n\n{diag_txt}\n\n💡 **[Solution]** {act_txt}"
+
+        text += get_narrative(p, real_score)
         detail_analysis_dict[p] = text
 
     return detail_analysis_dict
@@ -759,25 +775,18 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
             elif info['type'] == 'part6_sets':
                 c1=st.session_state.get("p6_set1_conf"); c2=st.session_state.get("p6_set2_conf"); c3=st.session_state.get("p6_set3_conf")
                 if not(c1 and c2 and c3): is_valid=False
-                qg = 1
-                for s in range(1,4):
-                    k_kw = f"p6_q{qg}"; a_kw = st.session_state.get(k_kw)
-                    if not a_kw: is_valid = False
-                    final_data.append({'q_id':str(qg),'ans':a_kw,'conf':eval(f"c{s}")})
-                    qg += 1
-                    k_t = f"p6_q{qg}_t"; a_t = st.session_state.get(k_t)
-                    if a_t == "잘 모르겠음": pass # Set level conf handles this implicitly as low/guess if user marks it so.
-                    if not a_t: is_valid = False
-                    final_data.append({'q_id':str(qg),'ans':a_t,'conf':eval(f"c{s}")})
-                    qg += 1
-                    k_f = f"p6_q{qg}_f"; a_f = st.session_state.get(k_f)
-                    if not a_f: is_valid = False
-                    final_data.append({'q_id':str(qg),'ans':a_f,'conf':eval(f"c{s}")})
-                    qg += 1
-                    k_s = f"p6_q{qg}"; a_s = st.session_state.get(k_s)
-                    if not a_s: is_valid = False
-                    final_data.append({'q_id':str(qg),'ans':a_s,'conf':eval(f"c{s}")})
-                    qg += 1
+                for i in range(1,5):
+                    a=st.session_state.get(f"p6_q{i}")
+                    if not a: is_valid=False
+                    final_data.append({'q_id':str(i),'ans':a,'conf':c1})
+                for i in range(5,9):
+                    a=st.session_state.get(f"p6_q{i}")
+                    if not a: is_valid=False
+                    final_data.append({'q_id':str(i),'ans':a,'conf':c2})
+                for i in range(9,13):
+                    a=st.session_state.get(f"p6_q{i}")
+                    if not a: is_valid=False
+                    final_data.append({'q_id':str(i),'ans':a,'conf':c3})
             elif info['type'] == 'simple_subj':
                 for i in range(1,6):
                     a=st.session_state.get(f"p8_q{i}"); c=st.session_state.get(f"p8_c{i}")
