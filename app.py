@@ -222,13 +222,13 @@ def generate_meta_analysis(df_results, student_name):
     text += "결론적으로, 점수 뒤에 숨겨진 이 메타인지 패턴을 이해해야 합니다. 모르는 건 죄가 아니지만, '안다고 착각하는 것'은 입시에서 가장 큰 적입니다. 이번 진단은 이 '착각'을 수치화하여 보여주었다는 점에서 큰 의미가 있습니다."
     return text
 
-# (3) Part 종합 총평 (6개 세부 그룹, 70/50 기준, 동적 마무리)
+# (3) Part 종합 총평 (6개 그룹, 70/50 기준, 동적 마무리)
 def generate_part_overview(df_results, student_name):
     part_scores = df_results.groupby('part')['is_correct'].mean() * 100
     all_parts = pd.Series(0, index=range(1, 9))
     part_scores = part_scores.combine_first(all_parts).sort_index()
     
-    # 6개 그룹 계산
+    # [수정] 6개 세부 그룹으로 분류
     groups = {
         "기초 체력 (Part 1)": part_scores[1],
         "문장 구조 분석 (Part 2, 3)": part_scores[2:4].mean(),
@@ -240,7 +240,7 @@ def generate_part_overview(df_results, student_name):
     
     text = f"학생의 8개 파트 성취도를 정밀 분석하여 '기초 체력'부터 '서술형 영작'까지 6가지 핵심 역량으로 재구성했습니다. 이는 학생의 학습 상태를 입체적으로 보여주는 지표입니다.\n\n"
     
-    # 각 그룹별 멘트 생성 (70/50 기준)
+    # [수정] 70점/50점 기준 멘트 생성
     group_scores = {}
     for name, score in groups.items():
         score = int(score)
@@ -255,7 +255,7 @@ def generate_part_overview(df_results, student_name):
             text += "학습 결손이 심각한 상태입니다. 해당 영역에 대한 기초 개념이 부재하여 문제 접근 자체가 어렵습니다. 최우선적으로 복구가 필요한 구간입니다. "
         text += "\n"
 
-    # 동적 마무리 멘트 (Dynamic Closing)
+    # [수정] 동적 마무리 멘트 (고정 텍스트 제거)
     max_score = max(group_scores.values())
     min_score = min(group_scores.values())
     best_area = max(group_scores, key=group_scores.get)
