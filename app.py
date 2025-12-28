@@ -308,7 +308,6 @@ def generate_part_specific_analysis(df_results, student_name):
         
         text = f"{title} 영역은 {intent}을(를) 진단하는 파트입니다. {student_name} 학생은 이 영역에서 {stat['score']}점을 받았습니다. {part_intro[p]} "
         
-        # 점수대별 멘트 생성 (No duplication)
         if stat['score'] >= 80:
             text += "분석 결과, 해당 영역에 대한 이해도가 매우 높습니다. 핵심 개념이 탄탄하게 잡혀있어 실전 문제에서도 흔들림이 없습니다. "
             if stat['lucky'] >= 30:
@@ -385,7 +384,7 @@ def generate_total_review(df_results, student_name):
         order = "첫째" if i == 0 else "둘째"
         
         if p in [1, 2]:
-            roadmap_sentences.append(f"{order}, **{title}** 영역의 경우 건물의 기초를 다지듯 중등/고등 필수 개념의 완전 학습을 목표로 해야 합니다. 문제 풀이보다는 개념 암기와 예문 학습 비중을 대폭 늘려야 합니다.")
+            roadmap_sentences.append(f"{order}, **{title}** 영역의 경우 건물의 기초를 다지듯 중등/고등 필수 개념의 완전 학습을 목표로 해야 합니다. 문제 풀이보다는 개념 암기와 예문 학습 비중을 대폭 늘려 뿌리부터 튼튼하게 만들어야 합니다.")
         elif p in [3, 4]:
             roadmap_sentences.append(f"{order}, **{title}** 영역은 감으로 읽는 습관을 버리고 문장 성분을 쪼개는 구조 독해력을 확보해야 합니다. 정독 훈련을 통해 해석의 정확도를 높여야 합니다.")
         elif p in [5, 6]:
@@ -547,7 +546,8 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
     st.title(info['title']); st.progress(part/8)
     if part == 8: st.error("⚠️ 서술형 주의: 마침표(.) 필수, 띄어쓰기 주의")
     
-    # Callback removal (handled in logic)
+    # Callback logic (Removed to fix form error)
+    
     with st.form(f"exam_{part}"):
         if info['type'] == 'simple_obj':
             for i in range(1, info['count']+1):
@@ -614,7 +614,7 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
             final_data = []
             is_valid = True
             
-            # Data Collection & Auto-fix for IDK
+            # Simple Obj
             if info['type'] == 'simple_obj':
                 for i in range(1, info['count']+1):
                     a = st.session_state.get(f"p{part}_q{i}"); c = st.session_state.get(f"p{part}_c{i}")
@@ -635,18 +635,22 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                 if o1 == "잘 모르겠음": c1 = "모름"
                 if not(s1 and v1 and o1 and c1): is_valid=False
                 final_data.extend([{'q_id':'1_subj','ans':s1,'conf':c1},{'q_id':'1_verb','ans':v1,'conf':c1},{'q_id':'1_obj','ans':o1,'conf':c1}])
+                
                 s2=st.session_state.get("p3_q2_subj"); v2=st.session_state.get("p3_q2_verb"); o2=st.session_state.get("p3_q2_obj"); c2=st.session_state.get("p3_c2")
                 if o2 == "잘 모르겠음": c2 = "모름"
                 if not(s2 and v2 and o2 and c2): is_valid=False
                 final_data.extend([{'q_id':'2_subj','ans':s2,'conf':c2},{'q_id':'2_verb','ans':v2,'conf':c2},{'q_id':'2_obj','ans':o2,'conf':c2}])
+                
                 s3=st.session_state.get("p3_q3_subj"); o3=st.session_state.get("p3_q3_obj"); c3=st.session_state.get("p3_c3")
                 if o3 == "잘 모르겠음": c3 = "모름"
                 if not(s3 and o3 and c3): is_valid=False
                 final_data.extend([{'q_id':'3_subj','ans':s3,'conf':c3},{'q_id':'3_obj','ans':o3,'conf':c3}])
+                
                 s4=st.session_state.get("p3_q4_subj"); v4=st.session_state.get("p3_q4_verb"); o4=st.session_state.get("p3_q4_obj"); c4=st.session_state.get("p3_c4")
                 if o4 == "잘 모르겠음": c4 = "모름"
                 if not(s4 and v4 and o4 and c4): is_valid=False
                 final_data.extend([{'q_id':'4_subj','ans':s4,'conf':c4},{'q_id':'4_verb','ans':v4,'conf':c4},{'q_id':'4_obj','ans':o4,'conf':c4}])
+                
                 o5=st.session_state.get("p3_q5_obj"); t5=st.session_state.get("p3_q5_text"); c5=st.session_state.get("p3_c5")
                 if o5 == "잘 모르겠음": c5 = "모름"
                 if not(o5 and t5 and c5): is_valid=False
