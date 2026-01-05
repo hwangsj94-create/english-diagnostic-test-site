@@ -687,16 +687,42 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                 else: st.radio("정답", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a, index=None)
                 st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=k_c, index=None); st.markdown("---")
         elif info['type'] == 'part5_special':
-            for i in [1,2]: st.markdown(f"**문항 {i}**"); k_a=f"p5_q{i}_obj"; k_c=f"p5_c{i}"; st.radio("(1)", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a, index=None); st.text_input("(2)", key=f"p5_q{i}_text"); st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=k_c, index=None); st.markdown("---")
-            for i in [3,4]: st.markdown(f"**문항 {i}**"); k_c=f"p5_c{i}"; st.text_input("정답", key=f"p5_q{i}_text"); st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=k_c, index=None); st.markdown("---")
-            st.markdown("**문항 5**"); k_a="p5_q5_obj"; k_c="p5_c5"; st.radio("(1)", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a, index=None); st.text_input("(2)", key=f"p5_q5_text"); st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=k_c, index=None); st.markdown("---")
+            for i in [1,2,5]:
+                ao=st.session_state.get(f"p5_q{i if i!=5 else 5}_obj"); at=st.session_state.get(f"p5_q{i if i!=5 else 5}_text"); c=st.session_state.get(f"p5_c{i if i!=5 else 5}")
+                if ao == "잘 모르겠음": c = "모름"
+                # 데이터 저장 로직 제거 (UI만 남김)
+                st.markdown(f"**문항 {i}**")
+                st.radio("(1)", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=f"p5_q{i if i!=5 else 5}_obj", index=None)
+                st.text_input("(2)", key=f"p5_q{i if i!=5 else 5}_text")
+                st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p5_c{i if i!=5 else 5}", index=None)
+                st.markdown("---")
+                
+            for i in [3,4]:
+                st.markdown(f"**문항 {i}**")
+                st.text_input("정답", key=f"p5_q{i}_text")
+                st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p5_c{i}", index=None)
+                st.markdown("---")
+
         elif info['type'] == 'part6_sets':
-            qg=1
-            for s in range(1,4):
-                st.markdown(f"### [Set {s}]"); st.text_input(f"Q{qg} Kw", key=f"p6_q{qg}"); k_a1=f"p6_q{qg}_t"; st.radio(f"Q{qg} Tone", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a1, index=None); qg+=1
-                k_a2=f"p6_q{qg}_f"; st.radio(f"Q{qg} Flow", ["1","2","3","4","잘 모르겠음"], horizontal=True, key=k_a2, index=None); qg+=1
-                st.text_area(f"Q{qg} Sum", key=f"p6_q{qg}"); qg+=1
-                st.radio(f"Set {s} 확신도", ["확신","애매","모름"], horizontal=True, key=f"p6_set{s}_conf", index=None); st.markdown("---")
+            qg = 1
+            for s in range(1, 4):
+                st.markdown(f"### [Set {s}]")
+                # 1. Keyword
+                st.text_input(f"Q{qg} Keyword", key=f"p6_q{qg}")
+                qg += 1
+                # 2. Tone
+                st.radio(f"Q{qg} Tone", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=f"p6_q{qg}", index=None)
+                qg += 1
+                # 3. Flow
+                st.radio(f"Q{qg} Flow", ["1","2","3","4","잘 모르겠음"], horizontal=True, key=f"p6_q{qg}", index=None)
+                qg += 1
+                # 4. Summary
+                st.text_area(f"Q{qg} Summary", key=f"p6_q{qg}")
+                qg += 1
+                # Set Confidence
+                st.radio(f"Set {s} 확신도", ["확신","애매","모름"], horizontal=True, key=f"p6_set{s}_conf", index=None)
+                st.markdown("---")
+
         elif info['type'] == 'simple_subj':
             for i in range(1,6): st.markdown(f"**문항 {i}**"); st.text_area("답안", key=f"p8_q{i}"); st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p8_c{i}", index=None); st.markdown("---")
 
@@ -747,6 +773,7 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                     if not a or not c: is_valid=False
                     final_data.append({'q_id':str(i),'ans':a,'conf':c})
             elif info['type'] == 'part5_special':
+                # Part 5 Validation & Storage Logic (Moved Inside Submit Button)
                 for i in [1,2,5]:
                     key_obj = f"p5_q{i if i!=5 else 5}_obj"
                     key_text = f"p5_q{i if i!=5 else 5}_text"
@@ -774,28 +801,37 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                         is_valid = False
                         
                     final_data.append({'q_id':f"{i}_text", 'ans':at, 'conf':c})
+
             elif info['type'] == 'part6_sets':
                 c1=st.session_state.get("p6_set1_conf"); c2=st.session_state.get("p6_set2_conf"); c3=st.session_state.get("p6_set3_conf")
                 if not(c1 and c2 and c3): is_valid=False
                 qg = 1
-                for s in range(1,4):
-                    k_kw = f"p6_q{qg}"; a_kw = st.session_state.get(k_kw)
+                for s in range(1, 4):
+                    # 1. Keyword
+                    a_kw = st.session_state.get(f"p6_q{qg}")
                     if not a_kw: is_valid = False
-                    final_data.append({'q_id':str(qg),'ans':a_kw,'conf':eval(f"c{s}")})
+                    final_data.append({'q_id':str(qg), 'ans':a_kw, 'conf':eval(f"c{s}")})
                     qg += 1
-                    k_t = f"p6_q{qg}_t"; a_t = st.session_state.get(k_t)
+                    
+                    # 2. Tone
+                    a_t = st.session_state.get(f"p6_q{qg}")
                     if a_t == "잘 모르겠음": pass 
                     if not a_t: is_valid = False
-                    final_data.append({'q_id':str(qg),'ans':a_t,'conf':eval(f"c{s}")})
+                    final_data.append({'q_id':str(qg), 'ans':a_t, 'conf':eval(f"c{s}")})
                     qg += 1
-                    k_f = f"p6_q{qg}_f"; a_f = st.session_state.get(k_f)
+                    
+                    # 3. Flow
+                    a_f = st.session_state.get(f"p6_q{qg}")
                     if not a_f: is_valid = False
-                    final_data.append({'q_id':str(qg),'ans':a_f,'conf':eval(f"c{s}")})
+                    final_data.append({'q_id':str(qg), 'ans':a_f, 'conf':eval(f"c{s}")})
                     qg += 1
-                    k_s = f"p6_q{qg}"; a_s = st.session_state.get(k_s)
+                    
+                    # 4. Summary
+                    a_s = st.session_state.get(f"p6_q{qg}")
                     if not a_s: is_valid = False
-                    final_data.append({'q_id':str(qg),'ans':a_s,'conf':eval(f"c{s}")})
+                    final_data.append({'q_id':str(qg), 'ans':a_s, 'conf':eval(f"c{s}")})
                     qg += 1
+
             elif info['type'] == 'simple_subj':
                 for i in range(1,6):
                     a=st.session_state.get(f"p8_q{i}"); c=st.session_state.get(f"p8_c{i}")
