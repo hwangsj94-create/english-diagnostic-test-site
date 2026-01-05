@@ -506,7 +506,7 @@ def show_report_dashboard(df_results, student_name):
     else:
         priority_text = "심화 학습 (All Pass)"
 
-    # Header - [1,1,2] 비율 적용
+    # Header - [1,1,2] 비율 적용 (PDF 버튼 삭제)
     c1, c2, c3 = st.columns([1, 1, 2])
     c1.metric("종합 점수", f"{score}점 / 100점")
     c2.metric("맞힌 문제", f"{correct_q} / {total_q}")
@@ -752,29 +752,54 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                     final_data.append({'q_id':str(i),'ans':a,'conf':c})
             elif info['type'] == 'part5_special':
                 for i in [1,2,5]:
-                    ao=st.session_state.get(f"p5_q{i if i!=5 else 5}_obj"); at=st.session_state.get(f"p5_q{i if i!=5 else 5}_text"); c=st.session_state.get(f"p5_c{i if i!=5 else 5}")
+                    key_obj = f"p5_q{i if i!=5 else 5}_obj"
+                    key_text = f"p5_q{i if i!=5 else 5}_text"
+                    key_conf = f"p5_c{i if i!=5 else 5}"
+                    
+                    ao = st.session_state.get(key_obj)
+                    at = st.session_state.get(key_text)
+                    c = st.session_state.get(key_conf)
+                    
                     if ao == "잘 모르겠음": c = "모름"
-                    if not(ao and at and c): is_valid=False
-                    final_data.append({'q_id':f"{i}_obj",'ans':ao,'conf':c}); final_data.append({'q_id':f"{i}_text",'ans':at,'conf':c})
+                    
+                    if not (ao and at and c):
+                        is_valid = False
+                        
+                    final_data.append({'q_id':f"{i}_obj", 'ans':ao, 'conf':c})
+                    final_data.append({'q_id':f"{i}_text", 'ans':at, 'conf':c})
+                    
                 for i in [3,4]:
-                    at=st.session_state.get(f"p5_q{i}_text"); c=st.session_state.get(f"p5_c{i}")
-                    if not at or not c: is_valid=False
-                    final_data.append({'q_id':f"{i}_text",'ans':at,'conf':c})
+                    key_text = f"p5_q{i}_text"
+                    key_conf = f"p5_c{i}"
+                    at = st.session_state.get(key_text)
+                    c = st.session_state.get(key_conf)
+                    
+                    if not (at and c):
+                        is_valid = False
+                        
+                    final_data.append({'q_id':f"{i}_text", 'ans':at, 'conf':c})
             elif info['type'] == 'part6_sets':
                 c1=st.session_state.get("p6_set1_conf"); c2=st.session_state.get("p6_set2_conf"); c3=st.session_state.get("p6_set3_conf")
                 if not(c1 and c2 and c3): is_valid=False
-                for i in range(1,5):
-                    a=st.session_state.get(f"p6_q{i}")
-                    if not a: is_valid=False
-                    final_data.append({'q_id':str(i),'ans':a,'conf':c1})
-                for i in range(5,9):
-                    a=st.session_state.get(f"p6_q{i}")
-                    if not a: is_valid=False
-                    final_data.append({'q_id':str(i),'ans':a,'conf':c2})
-                for i in range(9,13):
-                    a=st.session_state.get(f"p6_q{i}")
-                    if not a: is_valid=False
-                    final_data.append({'q_id':str(i),'ans':a,'conf':c3})
+                qg = 1
+                for s in range(1,4):
+                    k_kw = f"p6_q{qg}"; a_kw = st.session_state.get(k_kw)
+                    if not a_kw: is_valid = False
+                    final_data.append({'q_id':str(qg),'ans':a_kw,'conf':eval(f"c{s}")})
+                    qg += 1
+                    k_t = f"p6_q{qg}_t"; a_t = st.session_state.get(k_t)
+                    if a_t == "잘 모르겠음": pass 
+                    if not a_t: is_valid = False
+                    final_data.append({'q_id':str(qg),'ans':a_t,'conf':eval(f"c{s}")})
+                    qg += 1
+                    k_f = f"p6_q{qg}_f"; a_f = st.session_state.get(k_f)
+                    if not a_f: is_valid = False
+                    final_data.append({'q_id':str(qg),'ans':a_f,'conf':eval(f"c{s}")})
+                    qg += 1
+                    k_s = f"p6_q{qg}"; a_s = st.session_state.get(k_s)
+                    if not a_s: is_valid = False
+                    final_data.append({'q_id':str(qg),'ans':a_s,'conf':eval(f"c{s}")})
+                    qg += 1
             elif info['type'] == 'simple_subj':
                 for i in range(1,6):
                     a=st.session_state.get(f"p8_q{i}"); c=st.session_state.get(f"p8_c{i}")
