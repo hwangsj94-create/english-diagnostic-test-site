@@ -578,6 +578,7 @@ if 'user_email' not in st.session_state: st.session_state['user_email'] = None
 if 'user_name' not in st.session_state: st.session_state['user_name'] = None
 if 'current_part' not in st.session_state: st.session_state['current_part'] = 1
 if 'view_mode' not in st.session_state: st.session_state['view_mode'] = False
+if 'show_error' not in st.session_state: st.session_state['show_error'] = False
 
 if st.session_state['user_email'] is None:
     st.title("🎓 영어 역량 정밀 진단고사")
@@ -633,6 +634,7 @@ if st.session_state['user_email'] is None:
                     st.error("학생 정보를 찾을 수 없습니다.")
 
 elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8:
+    st.markdown("""<script>window.scrollTo(0,0);</script>""", unsafe_allow_html=True)
     part = st.session_state['current_part']
     info = EXAM_STRUCTURE[part]
     st.title(info['title']); st.progress(part/8)
@@ -641,90 +643,157 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
     with st.form(f"exam_{part}"):
         if info['type'] == 'simple_obj':
             for i in range(1, info['count']+1):
-                st.markdown(f"**문항 {i}**")
+                key_a = f"p{part}_q{i}"
+                key_c = f"p{part}_c{i}"
+                is_missing = st.session_state['show_error'] and (not st.session_state.get(key_a) or not st.session_state.get(key_c))
+                
+                label_txt = f"**문항 {i}**"
+                if is_missing: label_txt += " <span style='color:red;'>(필수 입력)</span>"
+                st.markdown(label_txt, unsafe_allow_html=True)
+                
                 c1, c2 = st.columns([3,1])
-                k_a = f"p{part}_q{i}"; k_c = f"p{part}_c{i}"
-                with c1: st.radio(f"Q{i}", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a, index=None, label_visibility="collapsed")
-                with c2: st.radio("확신도", ["확신","애매","모름"], key=k_c, index=None, label_visibility="collapsed")
+                with c1: st.radio(f"Q{i}", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=key_a, index=None, label_visibility="collapsed")
+                with c2: st.radio("확신도", ["확신","애매","모름"], key=key_c, index=None, label_visibility="collapsed")
                 st.markdown("---")
         elif info['type'] == 'part2_special':
             for i in range(1, 10):
-                st.markdown(f"**문항 {i}**"); c1, c2 = st.columns([3,1])
-                k_a = f"p2_q{i}"; k_c = f"p2_c{i}"
-                with c1: st.radio(f"Q{i}", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a, index=None, label_visibility="collapsed")
-                with c2: st.radio("확신도", ["확신","애매","모름"], key=k_c, index=None)
+                key_a = f"p2_q{i}"
+                key_c = f"p2_c{i}"
+                is_missing = st.session_state['show_error'] and (not st.session_state.get(key_a) or not st.session_state.get(key_c))
+                
+                label_txt = f"**문항 {i}**"
+                if is_missing: label_txt += " <span style='color:red;'>(필수 입력)</span>"
+                st.markdown(label_txt, unsafe_allow_html=True)
+                
+                c1, c2 = st.columns([3,1])
+                with c1: st.radio(f"Q{i}", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=key_a, index=None, label_visibility="collapsed")
+                with c2: st.radio("확신도", ["확신","애매","모름"], key=key_c, index=None)
                 st.markdown("---")
-            st.markdown("**문항 10**"); c1,c2,c3 = st.columns([2,2,1])
+            
+            is_missing_10 = st.session_state['show_error'] and (not st.session_state.get("p2_q10_wrong") or not st.session_state.get("p2_q10_correct") or not st.session_state.get("p2_c10"))
+            label_10 = "**문항 10**"
+            if is_missing_10: label_10 += " <span style='color:red;'>(필수 입력)</span>"
+            st.markdown(label_10, unsafe_allow_html=True)
+            
+            c1,c2,c3 = st.columns([2,2,1])
             with c1: st.text_input("틀린단어", key="p2_q10_wrong")
             with c2: st.text_input("고친단어", key="p2_q10_correct")
             with c3: st.radio("확신도", ["확신","애매","모름"], key="p2_c10", index=None)
         elif info['type'] == 'part3_special':
-            st.markdown("**문항 1**"); c1,c2=st.columns(2)
-            with c1: st.text_input("Main Subject", key="p3_q1_subj")
-            with c2: st.text_input("Main Verb", key="p3_q1_verb")
-            k_a="p3_q1_obj"; k_c="p3_c1"
-            st.radio("정답", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a, index=None); st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=k_c, index=None); st.markdown("---")
-            st.markdown("**문항 2**"); c1,c2=st.columns(2)
-            with c1: st.text_input("Main Subject", key="p3_q2_subj")
-            with c2: st.text_input("Main Verb", key="p3_q2_verb")
-            k_a="p3_q2_obj"; k_c="p3_c2"
-            st.radio("정답", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a, index=None); st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=k_c, index=None); st.markdown("---")
-            st.markdown("**문항 3**"); st.text_input("Subject", key="p3_q3_subj")
-            k_a="p3_q3_obj"; k_c="p3_c3"
-            st.radio("정답", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a, index=None); st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=k_c, index=None); st.markdown("---")
-            st.markdown("**문항 4**"); c1,c2=st.columns(2)
-            with c1: st.text_input("Main Subject", key="p3_q4_subj")
-            with c2: st.text_input("Main Verb", key="p3_q4_verb")
-            k_a="p3_q4_obj"; k_c="p3_c4"
-            st.radio("정답", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a, index=None); st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=k_c, index=None); st.markdown("---")
-            st.markdown("**문항 5**"); k_a="p3_q5_obj"; k_c="p3_c5"
-            st.radio("정답", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a, index=None)
-            st.text_input("빈칸", key="p3_q5_text"); st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=k_c, index=None); st.markdown("---")
+            for i in range(1, 5):
+                is_missing = False
+                if i < 5:
+                    if st.session_state['show_error']:
+                        if i < 3: is_missing = not(st.session_state.get(f"p3_q{i}_subj") and st.session_state.get(f"p3_q{i}_verb") and st.session_state.get(f"p3_q{i}_obj") and st.session_state.get(f"p3_c{i}"))
+                        elif i == 3: is_missing = not(st.session_state.get(f"p3_q{i}_subj") and st.session_state.get(f"p3_q{i}_obj") and st.session_state.get(f"p3_c{i}"))
+                        elif i == 4: is_missing = not(st.session_state.get(f"p3_q{i}_subj") and st.session_state.get(f"p3_q{i}_verb") and st.session_state.get(f"p3_q{i}_obj") and st.session_state.get(f"p3_c{i}"))
+                
+                label_txt = f"**문항 {i}**"
+                if is_missing: label_txt += " <span style='color:red;'>(필수 입력)</span>"
+                st.markdown(label_txt, unsafe_allow_html=True)
+                
+                if i in [1, 2, 4]:
+                    c1,c2=st.columns(2)
+                    with c1: st.text_input("Main Subject", key=f"p3_q{i}_subj")
+                    with c2: st.text_input("Main Verb", key=f"p3_q{i}_verb")
+                elif i == 3:
+                    st.text_input("Subject", key="p3_q3_subj")
+                
+                st.radio("정답", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=f"p3_q{i}_obj", index=None)
+                st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p3_c{i}", index=None)
+                st.markdown("---")
+            
+            # Q5
+            is_missing_5 = st.session_state['show_error'] and not(st.session_state.get("p3_q5_obj") and st.session_state.get("p3_q5_text") and st.session_state.get("p3_c5"))
+            label_5 = "**문항 5**"
+            if is_missing_5: label_5 += " <span style='color:red;'>(필수 입력)</span>"
+            st.markdown(label_5, unsafe_allow_html=True)
+            st.radio("정답", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key="p3_q5_obj", index=None)
+            st.text_input("빈칸", key="p3_q5_text")
+            st.radio("확신도", ["확신","애매","모름"], horizontal=True, key="p3_c5", index=None)
+            st.markdown("---")
+
         elif info['type'] == 'part4_special':
             for i in range(1,6):
-                st.markdown(f"**문항 {i}**"); k_a=f"p4_q{i}"; k_c=f"p4_c{i}"
-                if i in [1,2,5]: st.text_area("답안", key=k_a, height=80)
-                else: st.radio("정답", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=k_a, index=None)
-                st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=k_c, index=None); st.markdown("---")
-        elif info['type'] == 'part5_special':
-            for i in [1,2,5]:
-                ao=st.session_state.get(f"p5_q{i if i!=5 else 5}_obj"); at=st.session_state.get(f"p5_q{i if i!=5 else 5}_text"); c=st.session_state.get(f"p5_c{i if i!=5 else 5}")
-                if ao == "잘 모르겠음": c = "모름"
-                # 데이터 저장 로직 제거 (UI만 남김)
-                st.markdown(f"**문항 {i}**")
-                st.radio("(1)", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=f"p5_q{i if i!=5 else 5}_obj", index=None)
-                st.text_input("(2)", key=f"p5_q{i if i!=5 else 5}_text")
-                st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p5_c{i if i!=5 else 5}", index=None)
-                st.markdown("---")
+                key_a=f"p4_q{i}"; key_c=f"p4_c{i}"
+                is_missing = st.session_state['show_error'] and (not st.session_state.get(key_a) or not st.session_state.get(key_c))
+                label_txt = f"**문항 {i}**"
+                if is_missing: label_txt += " <span style='color:red;'>(필수 입력)</span>"
+                st.markdown(label_txt, unsafe_allow_html=True)
                 
-            for i in [3,4]:
-                st.markdown(f"**문항 {i}**")
-                st.text_input("정답", key=f"p5_q{i}_text")
-                st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p5_c{i}", index=None)
+                if i in [1,2,5]: st.text_area("답안", key=key_a, height=80)
+                else: st.radio("정답", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=key_a, index=None)
+                st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=key_c, index=None)
+                st.markdown("---")
+        elif info['type'] == 'part5_special':
+            for i in range(1, 6):
+                if i in [1, 2, 5]:
+                    is_missing = st.session_state['show_error'] and not(st.session_state.get(f"p5_q{i}_obj") and st.session_state.get(f"p5_q{i}_text") and st.session_state.get(f"p5_c{i}"))
+                    label_txt = f"**문항 {i}**"
+                    if is_missing: label_txt += " <span style='color:red;'>(필수 입력)</span>"
+                    st.markdown(label_txt, unsafe_allow_html=True)
+                    st.radio("(1)", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=f"p5_q{i}_obj", index=None)
+                    st.text_input("(2)", key=f"p5_q{i}_text")
+                    st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p5_c{i}", index=None)
+                else:
+                    is_missing = st.session_state['show_error'] and not(st.session_state.get(f"p5_q{i}_text") and st.session_state.get(f"p5_c{i}"))
+                    label_txt = f"**문항 {i}**"
+                    if is_missing: label_txt += " <span style='color:red;'>(필수 입력)</span>"
+                    st.markdown(label_txt, unsafe_allow_html=True)
+                    st.text_input("정답", key=f"p5_q{i}_text")
+                    st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p5_c{i}", index=None)
                 st.markdown("---")
 
         elif info['type'] == 'part6_sets':
-            qg = 1
-            for s in range(1, 4):
+            qg=1
+            for s in range(1,4):
                 st.markdown(f"### [Set {s}]")
+                is_missing_set = st.session_state['show_error'] and not st.session_state.get(f"p6_set{s}_conf")
+                
                 # 1. Keyword
-                st.text_input(f"Q{qg} Keyword", key=f"p6_q{qg}")
-                qg += 1
+                is_m1 = st.session_state['show_error'] and not st.session_state.get(f"p6_q{qg}")
+                l1 = f"Q{qg} Keyword"; 
+                if is_m1: l1 += " <span style='color:red;'>(*)</span>"
+                st.markdown(l1, unsafe_allow_html=True)
+                st.text_input("Kw", key=f"p6_q{qg}", label_visibility="collapsed"); qg+=1
+                
                 # 2. Tone
-                st.radio(f"Q{qg} Tone", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=f"p6_q{qg}", index=None)
-                qg += 1
+                is_m2 = st.session_state['show_error'] and not st.session_state.get(f"p6_q{qg}")
+                l2 = f"Q{qg} Tone"; 
+                if is_m2: l2 += " <span style='color:red;'>(*)</span>"
+                st.markdown(l2, unsafe_allow_html=True)
+                st.radio("Tone", ["1","2","3","4","5","잘 모르겠음"], horizontal=True, key=f"p6_q{qg}", index=None, label_visibility="collapsed"); qg+=1
+                
                 # 3. Flow
-                st.radio(f"Q{qg} Flow", ["1","2","3","4","잘 모르겠음"], horizontal=True, key=f"p6_q{qg}", index=None)
-                qg += 1
+                is_m3 = st.session_state['show_error'] and not st.session_state.get(f"p6_q{qg}")
+                l3 = f"Q{qg} Flow"; 
+                if is_m3: l3 += " <span style='color:red;'>(*)</span>"
+                st.markdown(l3, unsafe_allow_html=True)
+                st.radio("Flow", ["1","2","3","4","잘 모르겠음"], horizontal=True, key=f"p6_q{qg}", index=None, label_visibility="collapsed"); qg+=1
+                
                 # 4. Summary
-                st.text_area(f"Q{qg} Summary", key=f"p6_q{qg}")
-                qg += 1
-                # Set Confidence
-                st.radio(f"Set {s} 확신도", ["확신","애매","모름"], horizontal=True, key=f"p6_set{s}_conf", index=None)
+                is_m4 = st.session_state['show_error'] and not st.session_state.get(f"p6_q{qg}")
+                l4 = f"Q{qg} Summary"; 
+                if is_m4: l4 += " <span style='color:red;'>(*)</span>"
+                st.markdown(l4, unsafe_allow_html=True)
+                st.text_area("Sum", key=f"p6_q{qg}", label_visibility="collapsed"); qg+=1
+                
+                l_conf = f"Set {s} 확신도"
+                if is_missing_set: l_conf += " <span style='color:red;'>(필수)</span>"
+                st.markdown(l_conf, unsafe_allow_html=True)
+                st.radio("conf", ["확신","애매","모름"], horizontal=True, key=f"p6_set{s}_conf", index=None, label_visibility="collapsed")
                 st.markdown("---")
 
         elif info['type'] == 'simple_subj':
-            for i in range(1,6): st.markdown(f"**문항 {i}**"); st.text_area("답안", key=f"p8_q{i}"); st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p8_c{i}", index=None); st.markdown("---")
+            for i in range(1,6): 
+                is_missing = st.session_state['show_error'] and (not st.session_state.get(f"p8_q{i}") or not st.session_state.get(f"p8_c{i}"))
+                label_txt = f"**문항 {i}**"
+                if is_missing: label_txt += " <span style='color:red;'>(필수 입력)</span>"
+                st.markdown(label_txt, unsafe_allow_html=True)
+                
+                st.text_area("답안", key=f"p8_q{i}")
+                st.radio("확신도", ["확신","애매","모름"], horizontal=True, key=f"p8_c{i}", index=None)
+                st.markdown("---")
 
         if st.form_submit_button("제출 및 저장"):
             final_data = []
@@ -734,13 +803,13 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                 for i in range(1, info['count']+1):
                     a = st.session_state.get(f"p{part}_q{i}"); c = st.session_state.get(f"p{part}_c{i}")
                     if a == "잘 모르겠음": c = "모름"
-                    if not a: is_valid = False
+                    if not a or not c: is_valid = False
                     final_data.append({'q_id':str(i), 'ans':a, 'conf':c})
             elif info['type'] == 'part2_special':
                 for i in range(1,10):
                     a = st.session_state.get(f"p2_q{i}"); c = st.session_state.get(f"p2_c{i}")
                     if a == "잘 모르겠음": c = "모름"
-                    if not a: is_valid = False
+                    if not a or not c: is_valid = False
                     final_data.append({'q_id':str(i), 'ans':a, 'conf':c})
                 w = st.session_state.get("p2_q10_wrong"); o = st.session_state.get("p2_q10_correct"); c = st.session_state.get("p2_c10")
                 if not w or not o or not c: is_valid = False
@@ -773,60 +842,41 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                     if not a or not c: is_valid=False
                     final_data.append({'q_id':str(i),'ans':a,'conf':c})
             elif info['type'] == 'part5_special':
-                # Part 5 Validation & Storage Logic (Moved Inside Submit Button)
-                for i in [1,2,5]:
-                    key_obj = f"p5_q{i if i!=5 else 5}_obj"
-                    key_text = f"p5_q{i if i!=5 else 5}_text"
-                    key_conf = f"p5_c{i if i!=5 else 5}"
-                    
-                    ao = st.session_state.get(key_obj)
-                    at = st.session_state.get(key_text)
-                    c = st.session_state.get(key_conf)
-                    
-                    if ao == "잘 모르겠음": c = "모름"
-                    
-                    if not (ao and at and c):
-                        is_valid = False
-                        
-                    final_data.append({'q_id':f"{i}_obj", 'ans':ao, 'conf':c})
-                    final_data.append({'q_id':f"{i}_text", 'ans':at, 'conf':c})
-                    
-                for i in [3,4]:
-                    key_text = f"p5_q{i}_text"
-                    key_conf = f"p5_c{i}"
-                    at = st.session_state.get(key_text)
-                    c = st.session_state.get(key_conf)
-                    
-                    if not (at and c):
-                        is_valid = False
-                        
-                    final_data.append({'q_id':f"{i}_text", 'ans':at, 'conf':c})
+                for i in range(1, 6):
+                    if i in [1, 2, 5]:
+                        ao = st.session_state.get(f"p5_q{i}_obj")
+                        at = st.session_state.get(f"p5_q{i}_text")
+                        c = st.session_state.get(f"p5_c{i}")
+                        if ao == "잘 모르겠음": c = "모름"
+                        if not (ao and at and c): is_valid = False
+                        final_data.append({'q_id':f"{i}_obj", 'ans':ao, 'conf':c})
+                        final_data.append({'q_id':f"{i}_text", 'ans':at, 'conf':c})
+                    else:
+                        at = st.session_state.get(f"p5_q{i}_text")
+                        c = st.session_state.get(f"p5_c{i}")
+                        if not (at and c): is_valid = False
+                        final_data.append({'q_id':f"{i}_text", 'ans':at, 'conf':c})
 
             elif info['type'] == 'part6_sets':
                 c1=st.session_state.get("p6_set1_conf"); c2=st.session_state.get("p6_set2_conf"); c3=st.session_state.get("p6_set3_conf")
                 if not(c1 and c2 and c3): is_valid=False
                 qg = 1
                 for s in range(1, 4):
-                    # 1. Keyword
                     a_kw = st.session_state.get(f"p6_q{qg}")
                     if not a_kw: is_valid = False
                     final_data.append({'q_id':str(qg), 'ans':a_kw, 'conf':eval(f"c{s}")})
                     qg += 1
                     
-                    # 2. Tone
                     a_t = st.session_state.get(f"p6_q{qg}")
-                    if a_t == "잘 모르겠음": pass 
                     if not a_t: is_valid = False
                     final_data.append({'q_id':str(qg), 'ans':a_t, 'conf':eval(f"c{s}")})
                     qg += 1
                     
-                    # 3. Flow
                     a_f = st.session_state.get(f"p6_q{qg}")
                     if not a_f: is_valid = False
                     final_data.append({'q_id':str(qg), 'ans':a_f, 'conf':eval(f"c{s}")})
                     qg += 1
                     
-                    # 4. Summary
                     a_s = st.session_state.get(f"p6_q{qg}")
                     if not a_s: is_valid = False
                     final_data.append({'q_id':str(qg), 'ans':a_s, 'conf':eval(f"c{s}")})
@@ -839,10 +889,13 @@ elif not st.session_state['view_mode'] and st.session_state['current_part'] <= 8
                     final_data.append({'q_id':str(i),'ans':a,'conf':c})
 
             if not is_valid:
+                st.session_state['show_error'] = True
                 st.error("⚠️ 모든 문항의 정답과 확신도를 입력해야 제출할 수 있습니다.")
+                st.rerun()
             else:
                 try:
                     with st.spinner("저장 중..."):
+                        st.session_state['show_error'] = False
                         save_answers_bulk(st.session_state['user_email'], part, final_data)
                         st.session_state['current_part'] += 1
                         time.sleep(1)
